@@ -1,0 +1,18 @@
+# Bytecode and cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+
+# Local tooling
+.vscode/
+.streamlit/
+.pytest_cache/
+
+# Environment/config
+.env
+
+# OS noise
+Thumbs.db
