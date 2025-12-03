@@ -132,6 +132,19 @@ body {
   outline: none !important;
 }
 
+.radio-compact label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-right: 16px;
+  color: var(--text);
+}
+
+.radio-compact input {
+  margin: 0;
+}
+
 /* Hide number input spinners */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -165,6 +178,7 @@ button {
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   box-shadow: 0 12px 30px rgba(56, 189, 248, 0.25);
+  font-size: 1rem;
 }
 
 .primary:disabled,
