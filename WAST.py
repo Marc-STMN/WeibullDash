@@ -7,15 +7,18 @@ import os
 from datetime import datetime
 from io import BytesIO
 
+# Force a non-interactive backend early to avoid GUI/thread issues (Dash callbacks, background threads)
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["MPLBACKEND"] = "Agg"
+import matplotlib
+
+matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import numdifftools as nd
 import numpy as np
 import pandas as pd
 from scipy.stats import norm, weibull_min
 from numpy.typing import ArrayLike
-
-# Use offscreen rendering so the code also works in headless environments
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 __version__ = "4.0.0"
 
