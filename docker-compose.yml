@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  weibull-tool:
+    build: .
+    image: weibull-tool:latest
+    container_name: weibull-tool
+    restart: unless-stopped
+    ports:
+      - "8053:8053"
+    environment:
+      QT_QPA_PLATFORM: "offscreen"
+      MPLBACKEND: "Agg"

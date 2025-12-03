@@ -3,6 +3,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 import zipfile
+from typing import List
 
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.dcc import send_bytes
@@ -75,9 +76,19 @@ def _build_summary(
     }
 
 
+def _list_allowed_dirs(base: Path) -> List[dict]:
+    base.mkdir(parents=True, exist_ok=True)
+    dirs = [p for p in base.iterdir() if p.is_dir()]
+    options = [{"label": str(p.relative_to(base.parent)), "value": str(p.relative_to(base.parent))} for p in dirs]
+    # Always include the base itself as an option
+    options.insert(0, {"label": str(base), "value": str(base)})
+    return options
+
+
 def create_app():
     app = Dash(__name__, title="Weibull Tool", suppress_callback_exceptions=True)
     server = app.server
+    default_base = Path("exports")
 
     app.layout = html.Div(
         className="app",
@@ -158,11 +169,12 @@ def create_app():
                         className="control",
                         children=[
                             html.Label("Target folder (server, optional)", title="Default: ./exports"),
-                            dcc.Input(
+                            dcc.Dropdown(
                                 id="save-directory",
-                                type="text",
-                                placeholder="e.g. exports/my-analysis",
-                                style={"width": "100%"},
+                                options=_list_allowed_dirs(default_base),
+                                placeholder="Select an allowed server folder",
+                                searchable=True,
+                                clearable=True,
                             ),
                         ],
                     ),
