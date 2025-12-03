@@ -333,9 +333,6 @@ def create_app():
                 target_dir = _safe_path(save_directory)
                 target_dir.mkdir(parents=True, exist_ok=True)
                 (target_dir / "weibull_plot.png").write_bytes(base64.b64decode(analysis_data["plot_png"]))
-                (target_dir / "weibull_results.json").write_text(
-                    json.dumps(analysis_data["summary"], indent=2), encoding="utf-8"
-                )
                 status_messages.append(f"Saved on server at: {target_dir}")
             except Exception as exc:
                 status_messages.append(f"Could not save: {exc}")
@@ -344,7 +341,6 @@ def create_app():
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
             with zipfile.ZipFile(buffer, "w") as zf:
                 zf.writestr("weibull_plot.png", base64.b64decode(analysis_data["plot_png"]))
-                zf.writestr("weibull_results.json", json.dumps(analysis_data["summary"], indent=2))
                 zf.writestr("input_data.csv", "\n".join(str(val) for val in analysis_data.get("raw_data", [])))
 
         return send_bytes(build_zip_bytes, "weibull_output.zip"), " | ".join(status_messages)
