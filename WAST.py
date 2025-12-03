@@ -19,8 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm, weibull_min
 from numpy.typing import ArrayLike
-
-__version__ = "4.0.0"
+from version import __version__
 
 # Random generator for reproducibility
 np.random.seed(42)

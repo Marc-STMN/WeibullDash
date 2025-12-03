@@ -1,0 +1,16 @@
+.venv
+__pycache__
+.pytest_cache
+.streamlit
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.png
+*.jpg
+*.jpeg
+*.zip
+assets/*.map

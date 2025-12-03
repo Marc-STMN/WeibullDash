@@ -175,6 +175,10 @@ def create_app():
                 className="download",
                 children=[
                     html.Button("Ergebnis herunterladen (ZIP)", id="download-btn", n_clicks=0, disabled=True),
+                    html.P(
+                        "Beim Download oeffnet Ihr Browser den Speichern-Dialog. Optional können Sie unten auch serverseitig einen Zielordner angeben.",
+                        className="status",
+                    ),
                     html.Div(id="download-status", className="status"),
                     dcc.Download(id="download-bundle"),
                 ],
@@ -339,4 +343,13 @@ def create_app():
 app, server = create_app()
 
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0", port=8053)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Weibull Dash App")
+    parser.add_argument("--version", action="store_true", help="Show version and exit")
+    args = parser.parse_args()
+
+    if args.version:
+        print(f"Weibull Tool version: {__version__}")
+    else:
+        app.run_server(debug=True, host="0.0.0.0", port=8053)
