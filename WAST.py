@@ -175,7 +175,7 @@ def plot_weibull(
 
     label_text = (
         f"unbiased Weibull modulus m = {unbiased_shape:.1f}\n"
-        f"characteristic value {data_symbol} = {scale:.0f} {id_unit}"
+        f"characteristic value = {scale:.0f} {id_unit}"
     )
     plt.plot(np.log(weibull_quantiles), np.log(-np.log(1 - p)), "r-", label=label_text)
 
