@@ -1,9 +1,7 @@
 import base64
-import json
 from io import BytesIO
-from pathlib import Path
+import re
 import zipfile
-from typing import List
 
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.dcc import send_bytes
@@ -29,16 +27,6 @@ def _decode_upload(contents: str) -> bytes:
         return base64.b64decode(content_string)
     except Exception as exc:
         raise ValueError(f"Could not read upload: {exc}")
-
-
-def _safe_path(input_path: str) -> Path:
-    base_dir = Path.cwd().resolve()
-    path = Path(input_path)
-    path = path if path.is_absolute() else base_dir / path
-    resolved = path.resolve()
-    if base_dir not in resolved.parents and resolved != base_dir:
-        raise ValueError("Target folder must be inside the project directory.")
-    return resolved
 
 
 def _build_summary(
@@ -76,19 +64,9 @@ def _build_summary(
     }
 
 
-def _list_allowed_dirs(base: Path) -> List[dict]:
-    base.mkdir(parents=True, exist_ok=True)
-    dirs = [p for p in base.iterdir() if p.is_dir()]
-    options = [{"label": str(p.relative_to(base.parent)), "value": str(p.relative_to(base.parent))} for p in dirs]
-    # Always include the base itself as an option
-    options.insert(0, {"label": str(base), "value": str(base)})
-    return options
-
-
 def create_app():
     app = Dash(__name__, title="Weibull Tool", suppress_callback_exceptions=True)
     server = app.server
-    default_base = Path("exports")
 
     app.layout = html.Div(
         className="app",
@@ -97,7 +75,7 @@ def create_app():
             html.P(
                 [
                     "Upload Excel (drag & drop), choose parameters, and run the analysis. ",
-                    "Download the results as a ZIP file to a folder of your choice.",
+                    "Download the results as a ZIP file via your browser save dialog.",
                 ]
             ),
             html.Div(
@@ -136,6 +114,7 @@ def create_app():
                                 ],
                                 value="Werkstoff",
                                 clearable=False,
+                                searchable=False,
                             ),
                         ],
                     ),
@@ -165,19 +144,6 @@ def create_app():
                             dcc.Input(id="custom-value", type="number", min=0, step=1),
                         ],
                     ),
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label("Target folder (server, optional)", title="Default: ./exports"),
-                            dcc.Dropdown(
-                                id="save-directory",
-                                options=_list_allowed_dirs(default_base),
-                                placeholder="Select an allowed server folder",
-                                searchable=True,
-                                clearable=True,
-                            ),
-                        ],
-                    ),
                     html.Button("Run analysis", id="analyze", n_clicks=0, className="primary"),
                 ],
             ),
@@ -188,7 +154,7 @@ def create_app():
                 children=[
                     html.Button("Download results (ZIP)", id="download-btn", n_clicks=0, disabled=True),
                     html.P(
-                        "When downloading, your browser opens the save dialog. You can also set a server target folder below (optional).",
+                        "When downloading, your browser opens the save dialog.",
                         className="status",
                     ),
                     html.Div(id="download-status", className="status"),
@@ -321,30 +287,38 @@ def create_app():
         Output("download-status", "children"),
         Input("download-btn", "n_clicks"),
         State("analysis-data", "data"),
-        State("save-directory", "value"),
         prevent_initial_call=True,
     )
-    def trigger_download(n_clicks, analysis_data, save_directory):
+    def trigger_download(n_clicks, analysis_data):
         if not analysis_data:
             return no_update, "Please run an analysis first."
 
-        status_messages = []
-        if save_directory:
-            try:
-                target_dir = _safe_path(save_directory)
-                target_dir.mkdir(parents=True, exist_ok=True)
-                (target_dir / "weibull_plot.png").write_bytes(base64.b64decode(analysis_data["plot_png"]))
-                status_messages.append(f"Saved on server at: {target_dir}")
-            except Exception as exc:
-                status_messages.append(f"Could not save: {exc}")
-
         def build_zip_bytes(buffer: BytesIO):
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
+            summary = analysis_data.get("summary", {})
+            label_raw = summary.get("identifier") or summary.get("data_label") or "weibull_result"
+            label_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label_raw)).strip("_") or "weibull_result"
+            lines = [
+                f"Code version: {summary.get('code_version', __version__)}",
+                f"Parameter key / identifier: {label_raw}",
+                f"Data label: {summary.get('data_label', '')}",
+                f"Identifier: {summary.get('identifier', '')}",
+                f"Unit: {summary.get('unit', '')}",
+                f"Sample size n: {summary.get('n', '')}",
+                f"Weibull modulus (unbiased): {summary.get('unbiased_shape', '')}",
+                f"Characteristic value: {summary.get('scale_mle', '')} {summary.get('unit', '')}",
+                f"Confidence level: {summary.get('confidence_level', '')}%",
+                f"AD statistic: {summary.get('ad_statistic', '')}",
+                f"P-value: {summary.get('p_value', '')}",
+                f"Custom value: {summary.get('custom_value', '')}",
+                f"Failure probability: {summary.get('failure_probability', '')}",
+            ]
+            results_txt = "\n".join(lines)
             with zipfile.ZipFile(buffer, "w") as zf:
-                zf.writestr("weibull_plot.png", base64.b64decode(analysis_data["plot_png"]))
-                zf.writestr("input_data.csv", "\n".join(str(val) for val in analysis_data.get("raw_data", [])))
+                zf.writestr(f"{label_slug}_plot.png", base64.b64decode(analysis_data["plot_png"]))
+                zf.writestr(f"{label_slug}_results.txt", results_txt)
 
-        return send_bytes(build_zip_bytes, "weibull_output.zip"), " | ".join(status_messages)
+        return send_bytes(build_zip_bytes, "weibull_output.zip"), "Download ready."
 
     return app, server
 

@@ -67,13 +67,19 @@ body {
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .control label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 0;
   font-size: 0.92rem;
   color: var(--muted);
 }
@@ -90,20 +96,51 @@ body {
   background: #0b1220;
   border: 1px solid var(--panel-border);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   color: var(--text);
+  height: 46px;
 }
 
 .control input:focus {
   outline: 1px solid var(--accent);
-  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.18);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
 }
 
 .Select-control {
   background: #0b1220 !important;
   border-radius: 10px !important;
   border: 1px solid var(--panel-border) !important;
-  min-height: 42px;
+  min-height: 46px;
+  box-shadow: none !important;
+}
+
+.Select-control:focus-within,
+.Select.is-focused > .Select-control {
+  border-color: var(--accent) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Remove extra focus outline on the internal input of react-select */
+.Select-control input {
+  box-shadow: none !important;
+  outline: none !important;
+  border: none !important;
+}
+.Select-control input:focus {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
 .Select-placeholder,
