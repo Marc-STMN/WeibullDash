@@ -12,6 +12,7 @@ import numdifftools as nd
 import numpy as np
 import pandas as pd
 from scipy.stats import norm, weibull_min
+from numpy.typing import ArrayLike
 
 # Use offscreen rendering so the code also works in headless environments
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -184,13 +185,15 @@ def plot_weibull(
     upper_ci_curve = np.where(below_threshold, q_hi, q_lo)
     upper_ci_curve = np.where(above_threshold, q_lo_hi, q_lo)
 
-    x_vals = np.log(-np.log(1 - p))
-    plt.plot(np.log(lower_ci_curve), x_vals, "--", color="grey", linewidth=1)
-    plt.plot(np.log(upper_ci_curve), x_vals, "-", color="grey", linewidth=1)
+    x_vals: ArrayLike = np.log(-np.log(1 - p))
+    lower_log: ArrayLike = np.log(lower_ci_curve)
+    upper_log: ArrayLike = np.log(upper_ci_curve)
+    plt.plot(lower_log, x_vals, "--", color="grey", linewidth=1)
+    plt.plot(upper_log, x_vals, "-", color="grey", linewidth=1)
     plt.fill_betweenx(
         x_vals,
-        np.log(lower_ci_curve),
-        np.log(upper_ci_curve),
+        lower_log,
+        upper_log,
         color="grey",
         alpha=0.2,
     )

@@ -5,6 +5,7 @@ from pathlib import Path
 import zipfile
 
 from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash.dcc import send_bytes
 import numpy as np
 from scipy.stats import weibull_min
 
@@ -323,16 +324,14 @@ def create_app():
             except Exception as exc:
                 status_messages.append(f"Konnte nicht speichern: {exc}")
 
-        def build_zip_bytes():
-            buffer = BytesIO()
+        def build_zip_bytes(buffer: BytesIO):
+            """Dash send_bytes writer: fills provided buffer with the zip payload."""
             with zipfile.ZipFile(buffer, "w") as zf:
                 zf.writestr("weibull_plot.png", base64.b64decode(analysis_data["plot_png"]))
                 zf.writestr("weibull_results.json", json.dumps(analysis_data["summary"], indent=2))
                 zf.writestr("input_data.csv", "\n".join(str(val) for val in analysis_data.get("raw_data", [])))
-            buffer.seek(0)
-            return buffer.read()
 
-        return dcc.send_bytes(build_zip_bytes, "weibull_output.zip"), " | ".join(status_messages)
+        return send_bytes(build_zip_bytes, "weibull_output.zip"), " | ".join(status_messages)
 
     return app, server
 
