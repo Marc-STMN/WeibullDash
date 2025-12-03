@@ -197,6 +197,7 @@ def create_app():
             ),
             dcc.Store(id="file-bytes"),
             dcc.Store(id="analysis-data"),
+            html.Div(f"Version {__version__}", className="version-footer"),
         ],
     )
 

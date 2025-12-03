@@ -170,6 +170,13 @@ button:active:not(:disabled) {
   padding: 8px;
 }
 
+.version-footer {
+  margin-top: 12px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 @media (max-width: 640px) {
   .app {
     padding: 0 14px 18px;

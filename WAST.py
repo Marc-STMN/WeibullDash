@@ -99,7 +99,11 @@ def calculate_weibull_parameters(data, alpha):
         return -np.sum(weibull_min.logpdf(data, c=k, scale=lam))
 
     hess = nd.Hessian(lambda p: nll(p))([shape_mle, scale_mle])
-    cov = np.linalg.inv(hess)
+    try:
+        cov = np.linalg.inv(hess)
+    except np.linalg.LinAlgError:
+        # Fallback to pseudo-inverse if Hessian is ill-conditioned
+        cov = np.linalg.pinv(hess)
     se_shape, se_scale = np.sqrt(np.diag(cov))
 
     n = len(data)
