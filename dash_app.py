@@ -22,12 +22,12 @@ from WAST import (
 
 def _decode_upload(contents: str) -> bytes:
     if not contents:
-        raise ValueError("Keine Datei hochgeladen.")
+        raise ValueError("No file uploaded.")
     try:
         _, content_string = contents.split(",")
         return base64.b64decode(content_string)
     except Exception as exc:
-        raise ValueError(f"Upload konnte nicht gelesen werden: {exc}")
+        raise ValueError(f"Could not read upload: {exc}")
 
 
 def _safe_path(input_path: str) -> Path:
@@ -36,7 +36,7 @@ def _safe_path(input_path: str) -> Path:
     path = path if path.is_absolute() else base_dir / path
     resolved = path.resolve()
     if base_dir not in resolved.parents and resolved != base_dir:
-        raise ValueError("Zielordner muss innerhalb des Projektverzeichnisses liegen.")
+        raise ValueError("Target folder must be inside the project directory.")
     return resolved
 
 
@@ -82,11 +82,11 @@ def create_app():
     app.layout = html.Div(
         className="app",
         children=[
-            html.H1("Weibull Analysis Tool - Dash"),
+            html.H1("Weibull Analysis Tool"),
             html.P(
                 [
-                    "Excel hochladen (Drag & Drop), Parameter waehlen und die Analyse starten. ",
-                    "Das Ergebnis kann als ZIP in einen frei waehlbaren Ordner heruntergeladen werden.",
+                    "Upload Excel (drag & drop), choose parameters, and run the analysis. ",
+                    "Download the results as a ZIP file to a folder of your choice.",
                 ]
             ),
             html.Div(
@@ -94,7 +94,7 @@ def create_app():
                 children=[
                     dcc.Upload(
                         id="upload-data",
-                        children=html.Div(["Datei hierher ziehen oder ", html.A("auswaehlen")]),
+                        children=html.Div(["Drop file here or ", html.A("browse")]),
                         multiple=False,
                         style={
                             "width": "100%",
@@ -116,12 +116,12 @@ def create_app():
                     html.Div(
                         className="control",
                         children=[
-                            html.Label("Parameter-Schluessel"),
+                            html.Label("Parameter key"),
                             dcc.Dropdown(
                                 id="param-key",
                                 options=[
-                                    {"label": "Auftrags-Nr.", "value": "Auftrags-Nr."},
-                                    {"label": "Werkstoff", "value": "Werkstoff"},
+                                    {"label": "Order No. (Auftrags-Nr.)", "value": "Auftrags-Nr."},
+                                    {"label": "Material (Werkstoff)", "value": "Werkstoff"},
                                 ],
                                 value="Werkstoff",
                                 clearable=False,
@@ -131,7 +131,7 @@ def create_app():
                     html.Div(
                         className="control",
                         children=[
-                            html.Label("Konfidenzniveau"),
+                            html.Label("Confidence level"),
                             dcc.RadioItems(
                                 id="confidence",
                                 options=[{"label": f"{p}%", "value": p} for p in (90, 95, 99)],
@@ -143,30 +143,30 @@ def create_app():
                     html.Div(
                         className="control",
                         children=[
-                            html.Label("Benutzer-Kommentar"),
+                            html.Label("User comment"),
                             dcc.Input(id="user-comment", placeholder="Optional", type="text", style={"width": "100%"}),
                         ],
                     ),
                     html.Div(
                         className="control",
                         children=[
-                            html.Label("Optional: Wert fuer Ausfallwahrscheinlichkeit"),
+                            html.Label("Optional: value for failure probability"),
                             dcc.Input(id="custom-value", type="number", min=0, step=1),
                         ],
                     ),
                     html.Div(
                         className="control",
                         children=[
-                            html.Label("Zielordner (Server, optional)", title="Standard: ./exports"),
+                            html.Label("Target folder (server, optional)", title="Default: ./exports"),
                             dcc.Input(
                                 id="save-directory",
                                 type="text",
-                                placeholder="z.B. exports/meine-auswertung",
+                                placeholder="e.g. exports/my-analysis",
                                 style={"width": "100%"},
                             ),
                         ],
                     ),
-                    html.Button("Analyse starten", id="analyze", n_clicks=0, className="primary"),
+                    html.Button("Run analysis", id="analyze", n_clicks=0, className="primary"),
                 ],
             ),
             html.Div(id="analysis-summary", className="summary"),
@@ -174,9 +174,9 @@ def create_app():
             html.Div(
                 className="download",
                 children=[
-                    html.Button("Ergebnis herunterladen (ZIP)", id="download-btn", n_clicks=0, disabled=True),
+                    html.Button("Download results (ZIP)", id="download-btn", n_clicks=0, disabled=True),
                     html.P(
-                        "Beim Download oeffnet Ihr Browser den Speichern-Dialog. Optional können Sie unten auch serverseitig einen Zielordner angeben.",
+                        "When downloading, your browser opens the save dialog. You can also set a server target folder below (optional).",
                         className="status",
                     ),
                     html.Div(id="download-status", className="status"),
@@ -196,13 +196,13 @@ def create_app():
     )
     def handle_upload(contents, filename):
         if contents is None:
-            return "Keine Datei hochgeladen.", None
+            return "No file uploaded.", None
         try:
             decoded = _decode_upload(contents)
         except ValueError as exc:
             return str(exc), None
-        name_display = filename or "Unbenannt"
-        return f"Datei erhalten: {name_display}", base64.b64encode(decoded).decode()
+        name_display = filename or "Untitled"
+        return f"File received: {name_display}", base64.b64encode(decoded).decode()
 
     @app.callback(
         Output("analysis-summary", "children"),
@@ -219,7 +219,7 @@ def create_app():
     )
     def run_analysis(n_clicks, file_bytes, param_key, confidence, user_comment, custom_value):
         if not file_bytes:
-            return "Bitte erst eine Excel-Datei hochladen.", None, None, True
+            return "Please upload an Excel file first.", None, None, True
 
         file_content = base64.b64decode(file_bytes)
         alpha = (confidence or 95) / 100
@@ -234,7 +234,7 @@ def create_app():
                 data, alpha
             )
         except Exception as exc:
-            return f"Fehler: {exc}", None, None, True
+            return f"Error: {exc}", None, None, True
 
         p_lin = np.linspace(0.01, 0.99, 500)
         lower_ci = weibull_min.ppf(p_lin, c=ci_shape[0], scale=ci_scale[0])
@@ -281,14 +281,14 @@ def create_app():
         )
 
         summary_items = [
-            html.H3("Ergebnis"),
+            html.H3("Results"),
             html.Ul(
                 [
-                    html.Li(f"Stichprobe n = {summary['n']}, Parameter: {summary['data_label']} ({summary['identifier']})"),
-                    html.Li(f"Weibull-Modul (unbiased) m = {summary['unbiased_shape']:.2f}"),
-                    html.Li(f"Charakteristischer Wert = {summary['scale_mle']:.1f} {id_unit}"),
-                    html.Li(f"Konfidenzniveau: {summary['confidence_level']}%"),
-                    html.Li(f"AD-Statistik: {summary['ad_statistic']:.3f} / p-Wert: {summary['p_value']:.3f}"),
+                    html.Li(f"Sample n = {summary['n']}, parameter: {summary['data_label']} ({summary['identifier']})"),
+                    html.Li(f"Weibull modulus (unbiased) m = {summary['unbiased_shape']:.2f}"),
+                    html.Li(f"Characteristic value = {summary['scale_mle']:.1f} {id_unit}"),
+                    html.Li(f"Confidence level: {summary['confidence_level']}%"),
+                    html.Li(f"AD statistic: {summary['ad_statistic']:.3f} / p-value: {summary['p_value']:.3f}"),
                 ]
             ),
         ]
@@ -313,7 +313,7 @@ def create_app():
     )
     def trigger_download(n_clicks, analysis_data, save_directory):
         if not analysis_data:
-            return no_update, "Bitte zuerst eine Analyse ausfuehren."
+            return no_update, "Please run an analysis first."
 
         status_messages = []
         if save_directory:
@@ -324,9 +324,9 @@ def create_app():
                 (target_dir / "weibull_results.json").write_text(
                     json.dumps(analysis_data["summary"], indent=2), encoding="utf-8"
                 )
-                status_messages.append(f"Auf Server gespeichert unter: {target_dir}")
+                status_messages.append(f"Saved on server at: {target_dir}")
             except Exception as exc:
-                status_messages.append(f"Konnte nicht speichern: {exc}")
+                status_messages.append(f"Could not save: {exc}")
 
         def build_zip_bytes(buffer: BytesIO):
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
