@@ -297,7 +297,7 @@ def create_app():
         def build_zip_bytes(buffer: BytesIO):
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
             summary = analysis_data.get("summary", {})
-            label_raw = summary.get("identifier") or summary.get("data_label") or "weibull_result"
+            label_raw = summary.get("data_label") or summary.get("identifier") or "weibull_result"
             label_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label_raw)).strip("_") or "weibull_result"
             lines = [
                 f"Code version: {summary.get('code_version', __version__)}",
