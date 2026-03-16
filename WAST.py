@@ -69,8 +69,8 @@ def extract_data(df_data):
     raise ValueError("Error: Neither 'Fmax' nor 'sc' found in the DataFrame.")
 
 
-def load_parameter(file_object, search_key, target_row=1):
-    """Retrieve a parameter from the 'Parameter' sheet."""
+def load_parameter(file_object, search_key, target_col=1):
+    """Retrieve a parameter value from the 'Parameter' sheet."""
     try:
         excel_file = pd.ExcelFile(file_object)
         df_param = excel_file.parse("Parameter", header=None)
@@ -79,7 +79,7 @@ def load_parameter(file_object, search_key, target_row=1):
 
     for idx, cell in enumerate(df_param.iloc[:, 0]):
         if str(cell).strip() == search_key:
-            return str(df_param.iloc[idx, 2]).strip() if df_param.shape[1] > 2 else ""
+            return str(df_param.iloc[idx, target_col]).strip() if df_param.shape[1] > target_col else ""
 
     raise ValueError("Search term not found in the parameter sheet.")
 
@@ -165,8 +165,8 @@ def plot_weibull(
     p = np.linspace(0.01, 0.99, len(lower_ci))
     weibull_quantiles = weibull_min.ppf(p, c=unbiased_shape, scale=scale)
 
-    plt.figure(figsize=(8, 6))
-    plt.plot(
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(
         np.log(sorted_data),
         np.log(-np.log(1 - empirical_probs)),
         "x",
@@ -177,7 +177,7 @@ def plot_weibull(
         f"unbiased Weibull modulus m = {unbiased_shape:.1f}\n"
         f"characteristic value = {scale:.0f} {id_unit}"
     )
-    plt.plot(np.log(weibull_quantiles), np.log(-np.log(1 - p)), "r-", label=label_text)
+    ax.plot(np.log(weibull_quantiles), np.log(-np.log(1 - p)), "r-", label=label_text)
 
     q_lo = weibull_min.ppf(p, c=ci_shape[0], scale=ci_scale[0])
     q_lo_hi = weibull_min.ppf(p, c=ci_shape[1], scale=ci_scale[0])
@@ -194,9 +194,9 @@ def plot_weibull(
     x_vals: ArrayLike = np.log(-np.log(1 - p))
     lower_log: ArrayLike = np.log(lower_ci_curve)
     upper_log: ArrayLike = np.log(upper_ci_curve)
-    plt.plot(lower_log, x_vals, "--", color="grey", linewidth=1)
-    plt.plot(upper_log, x_vals, "-", color="grey", linewidth=1)
-    plt.fill_betweenx(
+    ax.plot(lower_log, x_vals, "--", color="grey", linewidth=1)
+    ax.plot(upper_log, x_vals, "-", color="grey", linewidth=1)
+    ax.fill_betweenx(
         x_vals,
         lower_log,
         upper_log,
@@ -205,7 +205,7 @@ def plot_weibull(
     )
 
     if custom_value is not None and failure_prob is not None:
-        plt.axvline(
+        ax.axvline(
             np.log(custom_value),
             color="blue",
             linestyle="--",
@@ -213,53 +213,60 @@ def plot_weibull(
             label=f"Failure prob at {custom_value:.0f} {id_unit} = {failure_prob*100:.2f}%",
         )
         y_fp = np.log(-np.log(1 - failure_prob))
-        plt.axhline(y=y_fp, color="blue", linestyle="--", linewidth=0.5)
+        ax.axhline(y=y_fp, color="blue", linestyle="--", linewidth=0.5)
 
     if user_comment:
-        plt.text(
+        ax.text(
             0.02,
             0.75,
             user_comment,
-            transform=plt.gca().transAxes,
+            transform=ax.transAxes,
             fontsize=8,
             bbox=dict(boxstyle="round", facecolor="white", edgecolor="lightgrey", alpha=0.8),
         )
 
-    plt.title(
+    ax.set_title(
         f"Weibull Plot with {int(alpha*100)}% Confidence Interval (ISO 20501)",
         fontsize=10,
     )
-    plt.xlabel(axis_title)
-    plt.ylabel("Failure Probability (%)")
-    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax.set_xlabel(axis_title)
+    ax.set_ylabel("Failure Probability (%)")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
 
-    x_min, x_max = np.min(lower_ci), np.max(upper_ci)
-    interval = 100 if x_max > 700 else 50
-    ticks = np.arange(np.floor(x_min / interval) * interval, np.ceil(x_max / interval) * interval + interval, interval)
-    plt.xticks(np.log(ticks), [f"{int(t)}" for t in ticks], fontsize=8)
+    finite_bounds = np.concatenate([np.asarray(lower_ci, dtype=float), np.asarray(upper_ci, dtype=float)])
+    finite_bounds = finite_bounds[np.isfinite(finite_bounds) & (finite_bounds > 0)]
+    if finite_bounds.size:
+        x_min, x_max = np.min(finite_bounds), np.max(finite_bounds)
+        interval = 100 if x_max > 700 else 50
+        ticks = np.arange(np.floor(x_min / interval) * interval, np.ceil(x_max / interval) * interval + interval, interval)
+        ticks = ticks[np.isfinite(ticks) & (ticks > 0)]
+        if ticks.size:
+            ax.set_xticks(np.log(ticks))
+            ax.set_xticklabels([f"{int(t)}" for t in ticks], fontsize=8)
 
     probs_std = np.array([0.01, 0.05, 0.10, 0.20, 0.40, 0.6325, 0.80, 0.95, 0.99])
     yticks = np.log(-np.log(1 - probs_std))
-    plt.yticks(yticks, [f"{p*100:.1f}" for p in probs_std], fontsize=8)
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([f"{p*100:.1f}" for p in probs_std], fontsize=8)
 
-    plt.legend(loc="upper left", fontsize=8)
+    ax.legend(loc="upper left", fontsize=8)
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    plt.text(
+    ax.text(
         1.02,
         1.00,
         f"Code version: {__version__} / Plot generated on: {current_date}",
-        transform=plt.gca().transAxes,
+        transform=ax.transAxes,
         verticalalignment="top",
         horizontalalignment="right",
         rotation=90,
         color="grey",
         fontsize=6,
     )
-    plt.text(
+    ax.text(
         0.97,
         0.03,
         f"AD-stat: {d_statistic:.3f} / p-value: {p_value:.3f}",
-        transform=plt.gca().transAxes,
+        transform=ax.transAxes,
         verticalalignment="bottom",
         horizontalalignment="right",
         fontsize=6,
@@ -267,15 +274,18 @@ def plot_weibull(
         bbox=dict(facecolor="white", edgecolor="white", alpha=1.0),
     )
 
-    return plt.gcf()
+    return fig
 
 
 def render_plot_to_png_bytes(fig):
     """Convert a Matplotlib figure to PNG bytes for download/embedding."""
     buffer = BytesIO()
-    fig.savefig(buffer, format="png", bbox_inches="tight")
-    buffer.seek(0)
-    return buffer.read()
+    try:
+        fig.savefig(buffer, format="png", bbox_inches="tight")
+        buffer.seek(0)
+        return buffer.read()
+    finally:
+        plt.close(fig)
 
 
 __all__ = [

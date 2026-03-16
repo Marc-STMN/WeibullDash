@@ -30,8 +30,10 @@ def _decode_upload(contents: str) -> bytes:
 
 
 def _build_summary(
-    data_label,
-    identifier,
+    parameter_key,
+    parameter_value,
+    order_number,
+    series_key,
     unit,
     data,
     shape,
@@ -46,8 +48,10 @@ def _build_summary(
     failure_prob,
 ):
     return {
-        "data_label": data_label,
-        "identifier": identifier,
+        "parameter_key": parameter_key,
+        "parameter_value": parameter_value,
+        "order_number": order_number,
+        "series_key": series_key,
         "unit": unit,
         "n": int(len(data)),
         "shape_mle": float(shape),
@@ -207,14 +211,22 @@ def create_app():
         custom_val = float(custom_value) if custom_value not in (None, "") else None
 
         try:
-            data_label = load_parameter(BytesIO(file_content), param_key)
-            identifier, id_unit, df_data = load_data(BytesIO(file_content), ["sc", "Fmax"])
-            data, col, sym, title = extract_data(df_data)
+            parameter_value = load_parameter(BytesIO(file_content), param_key)
+            try:
+                order_number = load_parameter(BytesIO(file_content), "Auftrags-Nr.")
+            except ValueError:
+                order_number = None
+            _, id_unit, df_data = load_data(BytesIO(file_content), ["sc", "Fmax"])
+            data, series_key, sym, title = extract_data(df_data)
             shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val = calculate_weibull_parameters(
                 data, alpha
             )
         except Exception as exc:
             return f"Error: {exc}", None, None, True
+
+        plot_label = parameter_value or param_key
+        if order_number and order_number != plot_label:
+            plot_label = f"{plot_label} ({order_number})"
 
         p_lin = np.linspace(0.01, 0.99, 500)
         lower_ci = weibull_min.ppf(p_lin, c=ci_shape[0], scale=ci_scale[0])
@@ -224,7 +236,7 @@ def create_app():
         )
         fig = plot_weibull(
             data,
-            f"{data_label} ({identifier})",
+            plot_label,
             id_unit,
             scale,
             unbiased_shape,
@@ -244,8 +256,10 @@ def create_app():
         img_bytes = render_plot_to_png_bytes(fig)
         img_b64 = base64.b64encode(img_bytes).decode()
         summary = _build_summary(
-            data_label,
-            identifier,
+            param_key,
+            parameter_value,
+            order_number,
+            series_key,
             id_unit,
             data,
             shape,
@@ -264,7 +278,12 @@ def create_app():
             html.H3("Results"),
             html.Ul(
                 [
-                    html.Li(f"Sample n = {summary['n']}, parameter: {summary['data_label']} ({summary['identifier']})"),
+                    html.Li(
+                        f"Sample n = {summary['n']}, "
+                        f"{summary['parameter_key']}: {summary['parameter_value']}"
+                    ),
+                    html.Li(f"Data series: {summary['series_key']}"),
+                    html.Li(f"Order No.: {summary['order_number'] or 'n/a'}"),
                     html.Li(f"Weibull modulus (unbiased) m = {summary['unbiased_shape']:.2f}"),
                     html.Li(f"Characteristic value = {summary['scale_mle']:.1f} {id_unit}"),
                     html.Li(f"Confidence level: {summary['confidence_level']}%"),
@@ -297,13 +316,14 @@ def create_app():
         def build_zip_bytes(buffer: BytesIO):
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
             summary = analysis_data.get("summary", {})
-            label_raw = summary.get("data_label") or summary.get("identifier") or "weibull_result"
+            label_raw = summary.get("parameter_value") or summary.get("order_number") or "weibull_result"
             label_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label_raw)).strip("_") or "weibull_result"
             lines = [
                 f"Code version: {summary.get('code_version', __version__)}",
-                f"Parameter key / identifier: {label_raw}",
-                f"Data label: {summary.get('data_label', '')}",
-                f"Identifier: {summary.get('identifier', '')}",
+                f"Parameter key: {summary.get('parameter_key', '')}",
+                f"Parameter value: {summary.get('parameter_value', '')}",
+                f"Order number: {summary.get('order_number', '')}",
+                f"Data series: {summary.get('series_key', '')}",
                 f"Unit: {summary.get('unit', '')}",
                 f"Sample size n: {summary.get('n', '')}",
                 f"Weibull modulus (unbiased): {summary.get('unbiased_shape', '')}",

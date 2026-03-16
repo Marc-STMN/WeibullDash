@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from io import BytesIO
+import matplotlib.pyplot as plt
 from scipy.stats import weibull_min
 
 from WAST import (
@@ -77,10 +78,16 @@ def test_extract_and_load(sample_excel):
 
 def test_load_parameter(sample_excel):
     param = load_parameter(sample_excel, "Werkstoff")
-    assert param == "MPa"
+    assert param == "ZrO2"
+
+
+def test_load_parameter_unit_column(sample_excel):
+    param_unit = load_parameter(sample_excel, "Werkstoff", target_col=2)
+    assert param_unit == "MPa"
 
 
 def test_plot_and_render(sample_excel):
+    open_figures_before = set(plt.get_fignums())
     df = pd.read_excel(sample_excel, sheet_name="Ergebnisse", header=None)
     values, col, sym, title = extract_data(df)
     shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val = calculate_weibull_parameters(
@@ -111,6 +118,7 @@ def test_plot_and_render(sample_excel):
     img_bytes = render_plot_to_png_bytes(fig)
     assert isinstance(img_bytes, (bytes, bytearray))
     assert len(img_bytes) > 0
+    assert set(plt.get_fignums()) == open_figures_before
 
 
 def test_load_parameter_missing(sample_excel):
