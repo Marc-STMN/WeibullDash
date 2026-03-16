@@ -15,4 +15,4 @@ COPY . .
 
 EXPOSE 8053
 
-CMD ["python", "dash_app.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8053", "dash_app:server"]

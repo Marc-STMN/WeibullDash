@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+import os
 import re
 import zipfile
 
@@ -356,4 +357,6 @@ if __name__ == "__main__":
     if args.version:
         print(f"Weibull Tool version: {__version__}")
     else:
-        app.run_server(debug=True, host="0.0.0.0", port=8053)
+        debug = os.getenv("DASH_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+        port = int(os.getenv("PORT", "8053"))
+        app.run_server(debug=debug, host="0.0.0.0", port=port)
