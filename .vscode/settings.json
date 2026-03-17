@@ -5,6 +5,5 @@
     "python.testing.pytestArgs": [
         "."
     ],
-    "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
     "python-envs.defaultEnvManager": "ms-python.python:system"
 }
