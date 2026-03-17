@@ -20,6 +20,12 @@ from WAST import (
 )
 
 
+PARAMETER_KEY_LABELS = {
+    "Auftrags-Nr.": "Order No. (Auftrags-Nr.)",
+    "Werkstoff": "Material (Werkstoff)",
+}
+
+
 def _decode_upload(contents: str) -> bytes:
     if not contents:
         raise ValueError("No file uploaded.")
@@ -32,9 +38,10 @@ def _decode_upload(contents: str) -> bytes:
 
 def _build_summary(
     parameter_key,
+    parameter_key_label,
     parameter_value,
     order_number,
-    series_key,
+    measurement_series,
     unit,
     data,
     shape,
@@ -50,9 +57,10 @@ def _build_summary(
 ):
     return {
         "parameter_key": parameter_key,
+        "parameter_key_label": parameter_key_label,
         "parameter_value": parameter_value,
         "order_number": order_number,
-        "series_key": series_key,
+        "measurement_series": measurement_series,
         "unit": unit,
         "n": int(len(data)),
         "shape_mle": float(shape),
@@ -225,8 +233,11 @@ def create_app():
         except Exception as exc:
             return f"Error: {exc}", None, None, True
 
-        plot_label = parameter_value or param_key
-        if order_number and order_number != plot_label:
+        parameter_key_label = PARAMETER_KEY_LABELS.get(param_key, param_key)
+        plot_label = parameter_key_label
+        if parameter_value:
+            plot_label = f"{parameter_key_label}: {parameter_value}"
+        if order_number and param_key != "Auftrags-Nr.":
             plot_label = f"{plot_label} ({order_number})"
 
         p_lin = np.linspace(0.01, 0.99, 500)
@@ -258,6 +269,7 @@ def create_app():
         img_b64 = base64.b64encode(img_bytes).decode()
         summary = _build_summary(
             param_key,
+            parameter_key_label,
             parameter_value,
             order_number,
             series_key,
@@ -281,9 +293,9 @@ def create_app():
                 [
                     html.Li(
                         f"Sample n = {summary['n']}, "
-                        f"{summary['parameter_key']}: {summary['parameter_value']}"
+                        f"{summary['parameter_key_label']}: {summary['parameter_value']}"
                     ),
-                    html.Li(f"Data series: {summary['series_key']}"),
+                    html.Li(f"Measured column: {summary['measurement_series']}"),
                     html.Li(f"Order No.: {summary['order_number'] or 'n/a'}"),
                     html.Li(f"Weibull modulus (unbiased) m = {summary['unbiased_shape']:.2f}"),
                     html.Li(f"Characteristic value = {summary['scale_mle']:.1f} {id_unit}"),
@@ -322,9 +334,10 @@ def create_app():
             lines = [
                 f"Code version: {summary.get('code_version', __version__)}",
                 f"Parameter key: {summary.get('parameter_key', '')}",
+                f"Parameter key label: {summary.get('parameter_key_label', '')}",
                 f"Parameter value: {summary.get('parameter_value', '')}",
                 f"Order number: {summary.get('order_number', '')}",
-                f"Data series: {summary.get('series_key', '')}",
+                f"Measured column: {summary.get('measurement_series', '')}",
                 f"Unit: {summary.get('unit', '')}",
                 f"Sample size n: {summary.get('n', '')}",
                 f"Weibull modulus (unbiased): {summary.get('unbiased_shape', '')}",

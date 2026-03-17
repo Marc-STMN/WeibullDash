@@ -69,7 +69,7 @@ def extract_data(df_data):
     raise ValueError("Error: Neither 'Fmax' nor 'sc' found in the DataFrame.")
 
 
-def load_parameter(file_object, search_key, target_col=1):
+def load_parameter(file_object, search_key, target_col=None):
     """Retrieve a parameter value from the 'Parameter' sheet."""
     try:
         excel_file = pd.ExcelFile(file_object)
@@ -79,7 +79,14 @@ def load_parameter(file_object, search_key, target_col=1):
 
     for idx, cell in enumerate(df_param.iloc[:, 0]):
         if str(cell).strip() == search_key:
-            return str(df_param.iloc[idx, target_col]).strip() if df_param.shape[1] > target_col else ""
+            if target_col is not None:
+                return str(df_param.iloc[idx, target_col]).strip() if df_param.shape[1] > target_col else ""
+
+            row_values = df_param.iloc[idx, 1:]
+            for value in row_values:
+                if pd.notna(value) and str(value).strip():
+                    return str(value).strip()
+            return ""
 
     raise ValueError("Search term not found in the parameter sheet.")
 

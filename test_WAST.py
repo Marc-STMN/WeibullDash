@@ -26,9 +26,9 @@ def sample_excel():
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df_params = pd.DataFrame([
-            ["Parameter", "Value", "Unit"],
-            ["Werkstoff", "ZrO2", "MPa"],
-            ["Auftrags-Nr.", "TEST-123", ""],
+            ["Parameter", None, "Value", "Unit"],
+            ["Werkstoff", None, "ZrO2", "MPa"],
+            ["Auftrags-Nr.", None, "TEST-123", ""],
         ])
         df_params.to_excel(writer, sheet_name="Parameter", index=False, header=False)
 
@@ -82,7 +82,7 @@ def test_load_parameter(sample_excel):
 
 
 def test_load_parameter_unit_column(sample_excel):
-    param_unit = load_parameter(sample_excel, "Werkstoff", target_col=2)
+    param_unit = load_parameter(sample_excel, "Werkstoff", target_col=3)
     assert param_unit == "MPa"
 
 
