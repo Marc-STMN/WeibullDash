@@ -212,6 +212,25 @@ button:active:not(:disabled) {
   margin: 0 0 8px;
 }
 
+.analysis-warnings {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.analysis-warnings h4 {
+  margin: 0 0 8px;
+  color: #fecaca;
+}
+
+.analysis-warnings ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #fee2e2;
+}
+
 .results-table {
   width: 100%;
   border-collapse: collapse;

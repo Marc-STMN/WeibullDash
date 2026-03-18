@@ -8,8 +8,8 @@ Das Projekt laeuft unter WSL2 am stabilsten und schnellsten, wenn es im Linux-Da
 
 ```bash
 cd /pfad/zum/projekt
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv-wsl
+source .venv-wsl/bin/activate
 python -m pip install -r requirements.txt
 python dash_app.py
 ```
@@ -29,10 +29,10 @@ bash run_wsl.sh
 ## Tests
 
 ```bash
-source .venv/bin/activate
+source .venv-wsl/bin/activate
 pytest -q
 ```
 
 ## VS Code
 
-Wenn Du das Projekt ueber die VS-Code-WSL-Erweiterung oeffnest, waehle als Interpreter die WSL-Umgebung `.venv/bin/python`.
+Wenn Du das Projekt ueber die VS-Code-WSL-Erweiterung oeffnest, waehle als Interpreter die WSL-Umgebung `.venv-wsl/bin/python`.

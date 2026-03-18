@@ -14,6 +14,7 @@ from WAST import (
     extract_data,
     load_data,
     load_parameter,
+    list_parameter_keys,
     plot_weibull,
     render_plot_to_png_bytes,
     __version__,
@@ -24,6 +25,11 @@ PARAMETER_KEY_LABELS = {
     "Auftrags-Nr.": "Order No. (Auftrags-Nr.)",
     "Werkstoff": "Material (Werkstoff)",
 }
+
+DEFAULT_PARAM_OPTIONS = [
+    {"label": PARAMETER_KEY_LABELS["Auftrags-Nr."], "value": "Auftrags-Nr."},
+    {"label": PARAMETER_KEY_LABELS["Werkstoff"], "value": "Werkstoff"},
+]
 
 
 def _decode_upload(contents: str) -> bytes:
@@ -44,6 +50,21 @@ def _parse_custom_value(value):
     if parsed <= 0:
         raise ValueError("Custom value must be greater than 0.")
     return parsed
+
+
+def _format_parameter_options(keys):
+    options = []
+    for key in keys:
+        options.append({"label": PARAMETER_KEY_LABELS.get(key, key), "value": key})
+    return options
+
+
+def _choose_parameter_value(keys):
+    if "Werkstoff" in keys:
+        return "Werkstoff"
+    if "Auftrags-Nr." in keys:
+        return "Auftrags-Nr."
+    return keys[0] if keys else None
 
 
 def _build_summary(
@@ -122,6 +143,41 @@ def _build_results_table(summary):
     )
 
 
+def _build_analysis_warnings(summary, data):
+    warnings = []
+
+    if summary["n"] < 10:
+        warnings.append(
+            "Small sample size: confidence intervals and goodness-of-fit assessment may be unstable."
+        )
+    if summary["p_value"] < 0.05:
+        warnings.append(
+            "The AD p-value is below 0.05. The fitted Weibull model may not describe the data well."
+        )
+    if summary["ci_shape"][0] <= 0 or summary["ci_scale"][0] <= 0:
+        warnings.append(
+            "At least one lower confidence bound is non-positive. Interpret the interval estimate with caution."
+        )
+    if summary["custom_value"] is not None:
+        data_min = float(np.min(data))
+        data_max = float(np.max(data))
+        if summary["custom_value"] < data_min or summary["custom_value"] > data_max:
+            warnings.append(
+                "The custom value lies outside the observed data range. The failure probability is an extrapolation."
+            )
+
+    if not warnings:
+        return None
+
+    return html.Div(
+        className="analysis-warnings",
+        children=[
+            html.H4("Analysis warnings"),
+            html.Ul([html.Li(message) for message in warnings]),
+        ],
+    )
+
+
 def create_app():
     app = Dash(__name__, title="Weibull Tool", suppress_callback_exceptions=True)
     server = app.server
@@ -166,10 +222,7 @@ def create_app():
                             html.Label("Parameter key"),
                             dcc.Dropdown(
                                 id="param-key",
-                                options=[
-                                    {"label": "Order No. (Auftrags-Nr.)", "value": "Auftrags-Nr."},
-                                    {"label": "Material (Werkstoff)", "value": "Werkstoff"},
-                                ],
+                                options=DEFAULT_PARAM_OPTIONS,
                                 value="Werkstoff",
                                 clearable=False,
                                 searchable=False,
@@ -206,8 +259,14 @@ def create_app():
                     html.Button("Run analysis", id="analyze", n_clicks=0, className="primary"),
                 ],
             ),
-            html.Div(id="analysis-summary", className="summary"),
-            html.Div(id="plot-container", className="plot"),
+            dcc.Loading(
+                type="default",
+                color="#38bdf8",
+                children=[
+                    html.Div(id="analysis-summary", className="summary"),
+                    html.Div(id="plot-container", className="plot"),
+                ],
+            ),
             html.Div(
                 className="download",
                 children=[
@@ -229,18 +288,32 @@ def create_app():
     @app.callback(
         Output("upload-status", "children"),
         Output("file-bytes", "data"),
+        Output("param-key", "options"),
+        Output("param-key", "value"),
         Input("upload-data", "contents"),
         State("upload-data", "filename"),
     )
     def handle_upload(contents, filename):
         if contents is None:
-            return "No file uploaded.", None
+            return "No file uploaded.", None, DEFAULT_PARAM_OPTIONS, _choose_parameter_value(
+                [opt["value"] for opt in DEFAULT_PARAM_OPTIONS]
+            )
         try:
             decoded = _decode_upload(contents)
+            keys = list_parameter_keys(BytesIO(decoded))
         except ValueError as exc:
-            return str(exc), None
+            return str(exc), None, DEFAULT_PARAM_OPTIONS, _choose_parameter_value(
+                [opt["value"] for opt in DEFAULT_PARAM_OPTIONS]
+            )
         name_display = filename or "Untitled"
-        return f"File received: {name_display}", base64.b64encode(decoded).decode()
+        options = _format_parameter_options(keys) or DEFAULT_PARAM_OPTIONS
+        selected_key = _choose_parameter_value([option["value"] for option in options])
+        return (
+            f"File received: {name_display}",
+            base64.b64encode(decoded).decode(),
+            options,
+            selected_key,
+        )
 
     @app.callback(
         Output("analysis-summary", "children"),
@@ -350,6 +423,7 @@ def create_app():
                     ),
                 ]
             ),
+            _build_analysis_warnings(summary, data),
             _build_results_table(summary),
         ]
 

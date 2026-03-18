@@ -8,6 +8,7 @@ from scipy.stats import weibull_min
 from WAST import (
     calculate_weibull_parameters,
     extract_data,
+    list_parameter_keys,
     load_data,
     load_parameter,
     plot_weibull,
@@ -85,6 +86,11 @@ def test_load_parameter(sample_excel):
 def test_load_parameter_unit_column(sample_excel):
     param_unit = load_parameter(sample_excel, "Werkstoff", target_col=3)
     assert param_unit == "MPa"
+
+
+def test_list_parameter_keys(sample_excel):
+    keys = list_parameter_keys(sample_excel)
+    assert keys == ["Werkstoff", "Auftrags-Nr."]
 
 
 def test_plot_and_render(sample_excel):

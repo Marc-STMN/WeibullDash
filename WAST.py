@@ -91,6 +91,28 @@ def load_parameter(file_object, search_key, target_col=None):
     raise ValueError("Search term not found in the parameter sheet.")
 
 
+def list_parameter_keys(file_object):
+    """Return available parameter keys from the 'Parameter' sheet."""
+    try:
+        excel_file = pd.ExcelFile(file_object)
+        df_param = excel_file.parse("Parameter", header=None)
+    except Exception as exc:  # pragma: no cover - IO errors are rare in tests
+        raise ValueError(f"Error reading 'Parameter' sheet: {type(exc).__name__} - {exc}")
+
+    keys = []
+    for idx, cell in enumerate(df_param.iloc[:, 0]):
+        if pd.isna(cell):
+            continue
+        key = str(cell).strip()
+        if not key or key.lower() == "parameter":
+            continue
+        row_values = df_param.iloc[idx, 1:]
+        has_value = any(pd.notna(value) and str(value).strip() for value in row_values)
+        if has_value and key not in keys:
+            keys.append(key)
+    return keys
+
+
 def calculate_weibull_parameters(data, alpha):
     """Perform Weibull MLE estimation and Wald confidence intervals."""
     if len(data) < 2:
@@ -300,6 +322,7 @@ __all__ = [
     "load_data",
     "extract_data",
     "load_parameter",
+    "list_parameter_keys",
     "calculate_weibull_parameters",
     "plot_weibull",
     "render_plot_to_png_bytes",

@@ -1,6 +1,8 @@
 .git/
 .repo-archive/
 .venv/
+.venv-win/
+.venv-wsl/
 venv/
 .pytest_cache/
 .streamlit/
