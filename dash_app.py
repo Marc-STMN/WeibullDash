@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+import json
 import os
 import re
 import zipfile
@@ -52,6 +53,10 @@ def _parse_custom_value(value):
     return parsed
 
 
+def _slugify_filename(value):
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_") or "weibull_result"
+
+
 def _format_parameter_options(keys):
     options = []
     for key in keys:
@@ -65,6 +70,59 @@ def _choose_parameter_value(keys):
     if "Auftrags-Nr." in keys:
         return "Auftrags-Nr."
     return keys[0] if keys else None
+
+
+def _build_download_bundle(analysis_data):
+    summary = analysis_data.get("summary", {})
+    raw_data = analysis_data.get("raw_data", [])
+    label_raw = summary.get("parameter_value") or summary.get("order_number") or "weibull_result"
+    label_slug = _slugify_filename(label_raw)
+
+    lines = [
+        f"Code version: {summary.get('code_version', __version__)}",
+        f"Parameter key: {summary.get('parameter_key', '')}",
+        f"Parameter key label: {summary.get('parameter_key_label', '')}",
+        f"Parameter value: {summary.get('parameter_value', '')}",
+        f"Order number: {summary.get('order_number', '')}",
+        f"Measured column: {summary.get('measurement_series', '')}",
+        f"Unit: {summary.get('unit', '')}",
+        f"Sample size n: {summary.get('n', '')}",
+        f"Weibull modulus (MLE): {summary.get('shape_mle', '')}",
+        f"Weibull modulus (unbiased): {summary.get('unbiased_shape', '')}",
+        f"Characteristic value: {summary.get('scale_mle', '')} {summary.get('unit', '')}",
+        f"Confidence level: {summary.get('confidence_level', '')}%",
+        f"CI shape: {summary.get('ci_shape', '')}",
+        f"CI scale: {summary.get('ci_scale', '')}",
+        f"AD statistic: {summary.get('ad_statistic', '')}",
+        f"P-value: {summary.get('p_value', '')}",
+        f"P-value method: {summary.get('p_value_method', '')}",
+        f"CI method: {summary.get('ci_method', '')}",
+        f"Bootstrap samples: {summary.get('bootstrap_samples', '')}",
+        f"Custom value: {summary.get('custom_value', '')}",
+        f"Failure probability: {summary.get('failure_probability', '')}",
+    ]
+    results_txt = "\n".join(lines)
+
+    csv_lines = ["index,value"]
+    csv_lines.extend(f"{idx},{value}" for idx, value in enumerate(raw_data, start=1))
+    raw_data_csv = "\n".join(csv_lines)
+
+    json_payload = {
+        "summary": summary,
+        "raw_data": raw_data,
+    }
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(f"{label_slug}_plot.png", base64.b64decode(analysis_data["plot_png"]))
+        zf.writestr(f"{label_slug}_results.txt", results_txt)
+        zf.writestr(
+            f"{label_slug}_results.json",
+            json.dumps(json_payload, indent=2, ensure_ascii=False),
+        )
+        zf.writestr(f"{label_slug}_raw_data.csv", raw_data_csv)
+    buffer.seek(0)
+    return buffer.read()
 
 
 def _build_summary(
@@ -104,6 +162,7 @@ def _build_summary(
         "p_value": float(p_val),
         "bootstrap_samples": int(bootstrap_samples),
         "p_value_method": "Parametric bootstrap AD under fitted Weibull model",
+        "ci_method": "Wald confidence intervals from inverse Hessian",
         "confidence_level": int(alpha * 100),
         "custom_value": None if custom_value is None else float(custom_value),
         "failure_probability": None if failure_prob is None else float(failure_prob),
@@ -127,6 +186,7 @@ def _build_results_table(summary):
         ("AD statistic", f"{summary['ad_statistic']:.4f}"),
         ("AD p-value", f"{summary['p_value']:.4f}"),
         ("p-value method", summary["p_value_method"]),
+        ("CI method", summary["ci_method"]),
         ("Bootstrap samples", str(summary["bootstrap_samples"])),
     ]
 
@@ -197,18 +257,9 @@ def create_app():
                 children=[
                     dcc.Upload(
                         id="upload-data",
+                        className="upload-dropzone",
                         children=html.Div(["Drop file here or ", html.A("browse")]),
                         multiple=False,
-                        style={
-                            "width": "100%",
-                            "height": "80px",
-                            "lineHeight": "80px",
-                            "borderWidth": "1px",
-                            "borderStyle": "dashed",
-                            "borderRadius": "5px",
-                            "textAlign": "center",
-                            "margin": "10px 0",
-                        },
                     ),
                     html.Div(id="upload-status", className="status"),
                 ],
@@ -450,34 +501,7 @@ def create_app():
 
         def build_zip_bytes(buffer: BytesIO):
             """Dash send_bytes writer: fills provided buffer with the zip payload."""
-            summary = analysis_data.get("summary", {})
-            label_raw = summary.get("parameter_value") or summary.get("order_number") or "weibull_result"
-            label_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label_raw)).strip("_") or "weibull_result"
-            lines = [
-                f"Code version: {summary.get('code_version', __version__)}",
-                f"Parameter key: {summary.get('parameter_key', '')}",
-                f"Parameter key label: {summary.get('parameter_key_label', '')}",
-                f"Parameter value: {summary.get('parameter_value', '')}",
-                f"Order number: {summary.get('order_number', '')}",
-                f"Measured column: {summary.get('measurement_series', '')}",
-                f"Unit: {summary.get('unit', '')}",
-                f"Sample size n: {summary.get('n', '')}",
-                f"Weibull modulus (unbiased): {summary.get('unbiased_shape', '')}",
-                f"Characteristic value: {summary.get('scale_mle', '')} {summary.get('unit', '')}",
-                f"Confidence level: {summary.get('confidence_level', '')}%",
-                f"AD statistic: {summary.get('ad_statistic', '')}",
-                f"P-value: {summary.get('p_value', '')}",
-                f"P-value method: {summary.get('p_value_method', '')}",
-                f"Bootstrap samples: {summary.get('bootstrap_samples', '')}",
-                f"CI shape: {summary.get('ci_shape', '')}",
-                f"CI scale: {summary.get('ci_scale', '')}",
-                f"Custom value: {summary.get('custom_value', '')}",
-                f"Failure probability: {summary.get('failure_probability', '')}",
-            ]
-            results_txt = "\n".join(lines)
-            with zipfile.ZipFile(buffer, "w") as zf:
-                zf.writestr(f"{label_slug}_plot.png", base64.b64decode(analysis_data["plot_png"]))
-                zf.writestr(f"{label_slug}_results.txt", results_txt)
+            buffer.write(_build_download_bundle(analysis_data))
 
         return send_bytes(build_zip_bytes, "weibull_output.zip"), "Download ready."
 
