@@ -46,7 +46,7 @@ def sample_excel():
 
 
 def test_calculate_weibull_parameters(sample_data):
-    shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val = calculate_weibull_parameters(
+    shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, n_boot = calculate_weibull_parameters(
         sample_data, 0.95
     )
     assert isinstance(shape, float)
@@ -55,6 +55,7 @@ def test_calculate_weibull_parameters(sample_data):
     assert ci_scale[0] < ci_scale[1]
     assert 0 <= d_stat <= 2
     assert 0 <= p_val <= 1
+    assert n_boot == 500
 
 
 def test_calculate_weibull_parameters_invalid_data():
@@ -90,7 +91,7 @@ def test_plot_and_render(sample_excel):
     open_figures_before = set(plt.get_fignums())
     df = pd.read_excel(sample_excel, sheet_name="Ergebnisse", header=None)
     values, col, sym, title = extract_data(df)
-    shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val = calculate_weibull_parameters(
+    shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, _ = calculate_weibull_parameters(
         values, 0.95
     )
     p_lin = np.linspace(0.01, 0.99, len(values))

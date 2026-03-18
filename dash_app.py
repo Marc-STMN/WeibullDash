@@ -36,6 +36,16 @@ def _decode_upload(contents: str) -> bytes:
         raise ValueError(f"Could not read upload: {exc}")
 
 
+def _parse_custom_value(value):
+    if value in (None, ""):
+        return None
+
+    parsed = float(value)
+    if parsed <= 0:
+        raise ValueError("Custom value must be greater than 0.")
+    return parsed
+
+
 def _build_summary(
     parameter_key,
     parameter_key_label,
@@ -51,6 +61,7 @@ def _build_summary(
     ci_scale,
     d_stat,
     p_val,
+    bootstrap_samples,
     alpha,
     custom_value,
     failure_prob,
@@ -70,11 +81,45 @@ def _build_summary(
         "ci_scale": [float(ci_scale[0]), float(ci_scale[1])],
         "ad_statistic": float(d_stat),
         "p_value": float(p_val),
+        "bootstrap_samples": int(bootstrap_samples),
+        "p_value_method": "Parametric bootstrap AD under fitted Weibull model",
         "confidence_level": int(alpha * 100),
         "custom_value": None if custom_value is None else float(custom_value),
         "failure_probability": None if failure_prob is None else float(failure_prob),
         "code_version": __version__,
     }
+
+
+def _build_results_table(summary):
+    rows = [
+        ("Weibull modulus m (MLE)", f"{summary['shape_mle']:.3f}"),
+        ("Weibull modulus m (unbiased)", f"{summary['unbiased_shape']:.3f}"),
+        (
+            f"CI m ({summary['confidence_level']}%)",
+            f"{summary['ci_shape'][0]:.3f} to {summary['ci_shape'][1]:.3f}",
+        ),
+        ("Characteristic value", f"{summary['scale_mle']:.3f} {summary['unit']}"),
+        (
+            f"CI characteristic value ({summary['confidence_level']}%)",
+            f"{summary['ci_scale'][0]:.3f} to {summary['ci_scale'][1]:.3f} {summary['unit']}",
+        ),
+        ("AD statistic", f"{summary['ad_statistic']:.4f}"),
+        ("AD p-value", f"{summary['p_value']:.4f}"),
+        ("p-value method", summary["p_value_method"]),
+        ("Bootstrap samples", str(summary["bootstrap_samples"])),
+    ]
+
+    return html.Table(
+        className="results-table",
+        children=[
+            html.Tbody(
+                [
+                    html.Tr([html.Th(label), html.Td(value)])
+                    for label, value in rows
+                ]
+            )
+        ],
+    )
 
 
 def create_app():
@@ -155,7 +200,7 @@ def create_app():
                         className="control",
                         children=[
                             html.Label("Optional: value for failure probability"),
-                            dcc.Input(id="custom-value", type="number", min=0, step=1),
+                            dcc.Input(id="custom-value", type="number", min=0.000001, step="any"),
                         ],
                     ),
                     html.Button("Run analysis", id="analyze", n_clicks=0, className="primary"),
@@ -217,9 +262,9 @@ def create_app():
         file_content = base64.b64decode(file_bytes)
         alpha = (confidence or 95) / 100
         comment = user_comment or ""
-        custom_val = float(custom_value) if custom_value not in (None, "") else None
 
         try:
+            custom_val = _parse_custom_value(custom_value)
             parameter_value = load_parameter(BytesIO(file_content), param_key)
             try:
                 order_number = load_parameter(BytesIO(file_content), "Auftrags-Nr.")
@@ -227,8 +272,8 @@ def create_app():
                 order_number = None
             _, id_unit, df_data = load_data(BytesIO(file_content), ["sc", "Fmax"])
             data, series_key, sym, title = extract_data(df_data)
-            shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val = calculate_weibull_parameters(
-                data, alpha
+            shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, bootstrap_samples = (
+                calculate_weibull_parameters(data, alpha)
             )
         except Exception as exc:
             return f"Error: {exc}", None, None, True
@@ -282,6 +327,7 @@ def create_app():
             ci_scale,
             d_stat,
             p_val,
+            bootstrap_samples,
             alpha,
             custom_val,
             failure_prob,
@@ -297,12 +343,14 @@ def create_app():
                     ),
                     html.Li(f"Measured column: {summary['measurement_series']}"),
                     html.Li(f"Order No.: {summary['order_number'] or 'n/a'}"),
-                    html.Li(f"Weibull modulus (unbiased) m = {summary['unbiased_shape']:.2f}"),
-                    html.Li(f"Characteristic value = {summary['scale_mle']:.1f} {id_unit}"),
                     html.Li(f"Confidence level: {summary['confidence_level']}%"),
-                    html.Li(f"AD statistic: {summary['ad_statistic']:.3f} / p-value: {summary['p_value']:.3f}"),
+                    html.Li(
+                        f"AD p-value via parametric bootstrap "
+                        f"(n={summary['bootstrap_samples']})"
+                    ),
                 ]
             ),
+            _build_results_table(summary),
         ]
 
         plot_img = html.Img(src=f"data:image/png;base64,{img_b64}", style={"maxWidth": "100%"})
@@ -345,6 +393,10 @@ def create_app():
                 f"Confidence level: {summary.get('confidence_level', '')}%",
                 f"AD statistic: {summary.get('ad_statistic', '')}",
                 f"P-value: {summary.get('p_value', '')}",
+                f"P-value method: {summary.get('p_value_method', '')}",
+                f"Bootstrap samples: {summary.get('bootstrap_samples', '')}",
+                f"CI shape: {summary.get('ci_shape', '')}",
+                f"CI scale: {summary.get('ci_scale', '')}",
                 f"Custom value: {summary.get('custom_value', '')}",
                 f"Failure probability: {summary.get('failure_probability', '')}",
             ]

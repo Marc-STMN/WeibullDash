@@ -212,6 +212,31 @@ button:active:not(:disabled) {
   margin: 0 0 8px;
 }
 
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 0.95rem;
+}
+
+.results-table th,
+.results-table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.results-table th {
+  width: 38%;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.results-table td {
+  color: var(--text);
+}
+
 .plot img,
 .plot > img {
   width: 100%;

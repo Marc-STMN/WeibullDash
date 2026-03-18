@@ -139,12 +139,13 @@ def calculate_weibull_parameters(data, alpha):
     rng = np.random.default_rng(seed=42)
     boot_stats = np.empty(n_boot)
     for j in range(n_boot):
-        samp = rng.choice(data, size=n, replace=True)
+        # Parametric bootstrap under the fitted Weibull model for the AD goodness-of-fit test.
+        samp = weibull_min.rvs(c=shape_mle, scale=scale_mle, size=n, random_state=rng)
         k_b, _, lam_b = weibull_min.fit(samp, floc=0)
         boot_stats[j] = ad_statistic(samp, k_b, lam_b)
     p_val_ad = (boot_stats >= ad_obs).mean()
 
-    return shape_mle, scale_mle, unbiased_shape, ci_shape, ci_scale, ad_obs, p_val_ad
+    return shape_mle, scale_mle, unbiased_shape, ci_shape, ci_scale, ad_obs, p_val_ad, n_boot
 
 
 def plot_weibull(
