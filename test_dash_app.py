@@ -6,7 +6,14 @@ import zipfile
 import pytest
 
 import dash_app
-from dash_app import _build_download_bundle, _parse_custom_value
+from dash_app import (
+    _analysis_context,
+    _build_analysis_payload,
+    _build_download_bundle,
+    _build_interactive_figure,
+    _parse_custom_value,
+    _toggle_excluded_index,
+)
 import version
 from version import _normalize_git_describe
 
@@ -95,3 +102,56 @@ def test_resolve_version_uses_version_file_when_git_unavailable(monkeypatch):
     finally:
         if version_file.exists():
             version_file.unlink()
+
+
+def test_toggle_excluded_index_preserves_minimum_two_points():
+    assert _toggle_excluded_index([], 1, 4) == [1]
+    assert _toggle_excluded_index([1], 1, 4) == []
+    assert _toggle_excluded_index([0, 1], 2, 4) == [0, 1]
+
+
+def test_build_analysis_payload_tracks_exclusions():
+    context = _analysis_context("Werkstoff", "ZrO2", "TEST-1", "sc", "MPa", "s", 0.95, None, "")
+    payload = _build_analysis_payload([480.0, 500.0, 520.0, 540.0], context, [1], "en")
+
+    assert payload["excluded_indices"] == [1]
+    assert payload["summary"]["excluded_count"] == 1
+    assert payload["summary"]["n"] == 3
+    assert payload["raw_data"] == [480.0, 520.0, 540.0]
+
+
+def test_build_interactive_figure_contains_excluded_trace():
+    analysis_data = {
+        "summary": {
+            "parameter_key": "Werkstoff",
+            "parameter_value": "ZY",
+            "order_number": "TTG-CMaC-0039",
+            "measurement_series": "sc",
+            "unit": "MPa",
+            "n": 3,
+            "shape_mle": 10.0,
+            "scale_mle": 500.0,
+            "unbiased_shape": 9.8,
+            "ci_shape": [8.5, 11.2],
+            "ci_scale": [470.0, 530.0],
+            "ad_statistic": 0.12,
+            "p_value": 0.45,
+            "bootstrap_samples": 500,
+            "p_value_method": "Parametric bootstrap AD under fitted Weibull model",
+            "ci_method": "Wald confidence intervals from inverse Hessian",
+            "confidence_level": 95,
+            "custom_value": None,
+            "failure_probability": None,
+            "comment": "",
+            "code_version": "test-version",
+            "excluded_count": 1,
+        },
+        "raw_data": [480.0, 500.0, 540.0],
+        "source_data": [480.0, 500.0, 520.0, 540.0],
+        "excluded_indices": [2],
+    }
+
+    fig = _build_interactive_figure(analysis_data, "en")
+
+    assert len(fig.data) >= 4
+    assert any(trace.name.startswith("Excluded points") for trace in fig.data)

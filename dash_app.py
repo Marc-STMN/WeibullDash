@@ -5,12 +5,15 @@ import os
 import re
 import zipfile
 
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.dcc import send_bytes
 import numpy as np
+import plotly.graph_objects as go
 from scipy.stats import weibull_min
 
 from WAST import (
+    _build_axis_ticks,
+    _expand_axis_bounds,
     calculate_weibull_parameters,
     extract_data,
     load_data,
@@ -49,6 +52,8 @@ TEXT = {
         "analyze_button": "Analyse starten",
         "download_button": "Ergebnisse herunterladen (ZIP)",
         "download_help": "Beim Download oeffnet der Browser den Dialog zum Speichern.",
+        "plot_help": "Punkte im Diagramm anklicken, um sie aus der Analyse aus- oder wieder einzuschliessen.",
+        "reset_exclusions": "Ausgeschlossene Punkte zuruecksetzen",
         "run_first": "Bitte zuerst eine Analyse ausfuehren.",
         "download_ready": "Download bereit.",
         "upload_first": "Bitte zuerst eine Excel-Datei hochladen.",
@@ -59,6 +64,7 @@ TEXT = {
         "summary_order": "Auftrags-Nr.: {value}",
         "summary_confidence": "Konfidenzniveau: {value}%",
         "summary_bootstrap": "AD-p-Wert ueber parametrischen Bootstrap (n={n})",
+        "summary_excluded": "Ausgeschlossene Punkte: {n}",
         "na": "k. A.",
         "warning_heading": "Analysehinweise",
         "warning_small_sample": "Kleine Stichprobe: Konfidenzintervalle und Anpassungsguete koennen instabil sein.",
@@ -97,6 +103,7 @@ TEXT = {
         "export_bootstrap": "Bootstrap-Stichproben",
         "export_custom": "Optionaler Wert",
         "export_failure": "Ausfallwahrscheinlichkeit",
+        "export_excluded": "Ausgeschlossene Indizes",
         "p_value_method": "Parametrischer Bootstrap des AD-Tests unter dem gefitteten Weibull-Modell",
         "ci_method": "Wald-Konfidenzintervalle aus der inversen Hesse-Matrix",
     },
@@ -119,6 +126,8 @@ TEXT = {
         "analyze_button": "Run analysis",
         "download_button": "Download results (ZIP)",
         "download_help": "When downloading, the browser opens the save dialog.",
+        "plot_help": "Click data points in the plot to exclude or include them in the analysis.",
+        "reset_exclusions": "Reset excluded points",
         "run_first": "Please run an analysis first.",
         "download_ready": "Download ready.",
         "upload_first": "Please upload an Excel file first.",
@@ -129,6 +138,7 @@ TEXT = {
         "summary_order": "Order No.: {value}",
         "summary_confidence": "Confidence level: {value}%",
         "summary_bootstrap": "AD p-value via parametric bootstrap (n={n})",
+        "summary_excluded": "Excluded points: {n}",
         "na": "n/a",
         "warning_heading": "Analysis warnings",
         "warning_small_sample": "Small sample size: confidence intervals and goodness-of-fit assessment may be unstable.",
@@ -167,6 +177,7 @@ TEXT = {
         "export_bootstrap": "Bootstrap samples",
         "export_custom": "Optional value",
         "export_failure": "Failure probability",
+        "export_excluded": "Excluded indices",
         "p_value_method": "Parametric bootstrap of the AD test under the fitted Weibull model",
         "ci_method": "Wald confidence intervals from the inverse Hessian",
     },
@@ -297,6 +308,305 @@ def _render_plot_base64(analysis_data, language):
     return base64.b64encode(render_plot_to_png_bytes(fig)).decode()
 
 
+def _weibull_y(probabilities):
+    probs = np.asarray(probabilities, dtype=float)
+    probs = np.clip(probs, 1e-10, 1 - 1e-10)
+    return np.log(-np.log(1 - probs))
+
+
+def _analysis_context(
+    parameter_key,
+    parameter_value,
+    order_number,
+    measurement_series,
+    unit,
+    data_symbol,
+    alpha,
+    custom_value,
+    comment,
+):
+    return {
+        "parameter_key": parameter_key,
+        "parameter_value": parameter_value,
+        "order_number": order_number,
+        "measurement_series": measurement_series,
+        "unit": unit,
+        "data_symbol": data_symbol,
+        "alpha": float(alpha),
+        "custom_value": None if custom_value is None else float(custom_value),
+        "comment": comment or "",
+    }
+
+
+def _build_analysis_payload(source_data, context, excluded_indices, language):
+    source_array = np.asarray(source_data, dtype=float)
+    excluded_sorted = sorted(
+        {
+            int(idx)
+            for idx in (excluded_indices or [])
+            if 0 <= int(idx) < len(source_array)
+        }
+    )
+    included_mask = np.ones(len(source_array), dtype=bool)
+    if excluded_sorted:
+        included_mask[excluded_sorted] = False
+    active_data = source_array[included_mask]
+    if active_data.size < 2:
+        raise ValueError("Need at least 2 data points for Weibull analysis")
+
+    shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, bootstrap_samples = calculate_weibull_parameters(
+        active_data, context["alpha"]
+    )
+    custom_value = context.get("custom_value")
+    failure_prob = weibull_min.cdf(custom_value, c=unbiased_shape, scale=scale) if custom_value is not None else None
+
+    summary = _build_summary(
+        context["parameter_key"],
+        context["parameter_value"],
+        context["order_number"],
+        context["measurement_series"],
+        context["unit"],
+        active_data,
+        shape,
+        scale,
+        unbiased_shape,
+        ci_shape,
+        ci_scale,
+        d_stat,
+        p_val,
+        bootstrap_samples,
+        context["alpha"],
+        custom_value,
+        failure_prob,
+        context.get("comment", ""),
+        language,
+    )
+    summary["data_symbol"] = context.get("data_symbol", "")
+    summary["excluded_count"] = len(excluded_sorted)
+    summary["source_n"] = int(len(source_array))
+
+    return {
+        "summary": summary,
+        "raw_data": active_data.tolist(),
+        "source_data": source_array.tolist(),
+        "excluded_indices": excluded_sorted,
+        "context": context,
+    }
+
+
+def _toggle_excluded_index(excluded_indices, clicked_index, source_length):
+    excluded = {int(idx) for idx in (excluded_indices or []) if 0 <= int(idx) < source_length}
+    clicked = int(clicked_index)
+    if clicked in excluded:
+        excluded.remove(clicked)
+    else:
+        if source_length - len(excluded) <= 2:
+            return sorted(excluded)
+        excluded.add(clicked)
+    return sorted(excluded)
+
+
+def _extract_clicked_index(click_data):
+    if not click_data or not click_data.get("points"):
+        return None
+    customdata = click_data["points"][0].get("customdata")
+    if customdata is None:
+        return None
+    if isinstance(customdata, (list, tuple)):
+        customdata = customdata[0] if customdata else None
+    return None if customdata is None else int(customdata)
+
+
+def _format_plot_tick(value):
+    if value >= 100:
+        return f"{value:.0f}"
+    if value >= 10:
+        return f"{value:.1f}".rstrip("0").rstrip(".")
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _build_interactive_figure(analysis_data, language):
+    summary = analysis_data["summary"]
+    source_data = np.asarray(analysis_data.get("source_data") or analysis_data["raw_data"], dtype=float)
+    excluded_indices = np.asarray(sorted(analysis_data.get("excluded_indices", [])), dtype=int)
+    excluded_set = set(excluded_indices.tolist())
+    active_indices = np.array([idx for idx in range(len(source_data)) if idx not in excluded_set], dtype=int)
+    active_data = source_data[active_indices]
+
+    alpha = summary["confidence_level"] / 100
+    p = np.linspace(0.01, 0.99, 500)
+    y_curve = _weibull_y(p)
+    fit_quantiles = weibull_min.ppf(p, c=summary["unbiased_shape"], scale=summary["scale_mle"])
+    ci_shape = tuple(summary["ci_shape"])
+    ci_scale = tuple(summary["ci_scale"])
+    q_lo = weibull_min.ppf(p, c=ci_shape[0], scale=ci_scale[0])
+    q_lo_hi = weibull_min.ppf(p, c=ci_shape[1], scale=ci_scale[0])
+    q_hi = weibull_min.ppf(p, c=ci_shape[1], scale=ci_scale[1])
+    q_hi_hi = weibull_min.ppf(p, c=ci_shape[0], scale=ci_scale[1])
+    threshold = 1 - np.exp(-1)
+    below_threshold = p <= threshold
+    above_threshold = p > threshold
+    lower_ci_curve = np.where(below_threshold, q_lo, q_hi)
+    lower_ci_curve = np.where(above_threshold, q_hi_hi, q_hi)
+    upper_ci_curve = np.where(below_threshold, q_hi, q_lo)
+    upper_ci_curve = np.where(above_threshold, q_lo_hi, q_lo)
+
+    order_active = np.argsort(active_data)
+    active_sorted = active_data[order_active]
+    active_sorted_indices = active_indices[order_active]
+    empirical_probs = (np.arange(1, len(active_sorted) + 1) - 0.5) / len(active_sorted)
+
+    order_source = np.argsort(source_data)
+    source_sorted = source_data[order_source]
+    source_probs = (np.arange(1, len(source_sorted) + 1) - 0.5) / len(source_sorted)
+    excluded_mask_sorted = np.isin(order_source, excluded_indices)
+
+    palette = {
+        "data": "#0f766e",
+        "fit": "#d97706",
+        "band_fill": "rgba(148, 163, 184, 0.24)",
+        "accent": "#0284c7",
+        "excluded": "#64748b",
+    }
+    text = {
+        "de": {
+            "fit": "Fit: m = {m:.1f}, Kennwert = {scale:.0f} {unit}",
+            "band": "{confidence} %-Konfidenzband",
+            "custom": "P(Ausfall) bei {value:.0f} {unit} = {prob:.2f} %",
+            "title": "Weibull-Diagramm mit {confidence} %-Konfidenzband",
+            "ylabel": "Ausfallwahrscheinlichkeit (%)",
+            "included": "Eingeschlossene Punkte | n = {n}",
+            "excluded": "Ausgeschlossene Punkte | n = {n}",
+        },
+        "en": {
+            "fit": "Fit: m = {m:.1f}, characteristic value = {scale:.0f} {unit}",
+            "band": "{confidence}% confidence band",
+            "custom": "P(failure) at {value:.0f} {unit} = {prob:.2f} %",
+            "title": "Weibull plot with {confidence}% confidence band",
+            "ylabel": "Failure probability (%)",
+            "included": "Included points | n = {n}",
+            "excluded": "Excluded points | n = {n}",
+        },
+    }[_get_language(language)]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=np.concatenate([np.log(lower_ci_curve), np.log(upper_ci_curve[::-1])]),
+            y=np.concatenate([y_curve, y_curve[::-1]]),
+            fill="toself",
+            fillcolor=palette["band_fill"],
+            line=dict(color="rgba(0,0,0,0)"),
+            hoverinfo="skip",
+            name=text["band"].format(confidence=int(alpha * 100)),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=np.log(fit_quantiles),
+            y=y_curve,
+            mode="lines",
+            line=dict(color=palette["fit"], width=2),
+            name=text["fit"].format(m=summary["unbiased_shape"], scale=summary["scale_mle"], unit=summary["unit"]),
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=np.log(active_sorted),
+            y=_weibull_y(empirical_probs),
+            mode="markers",
+            marker=dict(color=palette["data"], symbol="x", size=9, line=dict(width=1.5, color=palette["data"])),
+            name=text["included"].format(n=len(active_sorted)),
+            customdata=np.array(active_sorted_indices)[:, None],
+            text=[f"{value:.3f}" for value in active_sorted],
+            hovertemplate="x=%{text}<extra></extra>",
+        )
+    )
+    if excluded_mask_sorted.any():
+        fig.add_trace(
+            go.Scatter(
+                x=np.log(source_sorted[excluded_mask_sorted]),
+                y=_weibull_y(source_probs[excluded_mask_sorted]),
+                mode="markers",
+                marker=dict(
+                    color=palette["excluded"],
+                    symbol="circle-open",
+                    size=9,
+                    line=dict(width=1.5, color=palette["excluded"]),
+                ),
+                name=text["excluded"].format(n=int(excluded_mask_sorted.sum())),
+                customdata=np.array(order_source[excluded_mask_sorted])[:, None],
+                text=[f"{value:.3f}" for value in source_sorted[excluded_mask_sorted]],
+                hovertemplate="x=%{text}<extra></extra>",
+            )
+        )
+
+    if summary.get("custom_value") is not None and summary.get("failure_probability") is not None:
+        x_custom = np.log(summary["custom_value"])
+        y_custom = float(_weibull_y([summary["failure_probability"]])[0])
+        fig.add_vline(x=x_custom, line_color=palette["accent"], line_dash="dash", line_width=1)
+        fig.add_hline(y=y_custom, line_color=palette["accent"], line_dash="dash", line_width=1)
+
+    axis_candidates = [
+        np.asarray(source_data, dtype=float),
+        np.asarray(fit_quantiles, dtype=float),
+        np.asarray(lower_ci_curve, dtype=float),
+        np.asarray(upper_ci_curve, dtype=float),
+    ]
+    if summary.get("custom_value") is not None:
+        axis_candidates.append(np.asarray([summary["custom_value"]], dtype=float))
+    finite_axis = np.concatenate(axis_candidates)
+    finite_axis = finite_axis[np.isfinite(finite_axis) & (finite_axis > 0)]
+    if finite_axis.size:
+        display_min, display_max = _expand_axis_bounds(float(np.min(finite_axis)), float(np.max(finite_axis)))
+    else:
+        display_min, display_max = float(np.min(source_data)), float(np.max(source_data))
+    ticks = _build_axis_ticks(display_min, display_max)
+    probs_std = np.array([0.01, 0.05, 0.10, 0.20, 0.40, 0.6325, 0.80, 0.95, 0.99])
+
+    fig.update_layout(
+        title=text["title"].format(confidence=int(alpha * 100)),
+        template="plotly_white",
+        height=560,
+        margin=dict(l=70, r=30, t=70, b=70),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        clickmode="event",
+        hovermode="closest",
+    )
+    fig.update_xaxes(
+        title=_measurement_axis_title(summary["measurement_series"], summary["unit"], language),
+        tickmode="array",
+        tickvals=np.log(ticks) if ticks.size else None,
+        ticktext=[_format_plot_tick(tick) for tick in ticks] if ticks.size else None,
+        range=[np.log(display_min), np.log(display_max)],
+        gridcolor="#cbd5e1",
+        zeroline=False,
+    )
+    fig.update_yaxes(
+        title=text["ylabel"],
+        tickmode="array",
+        tickvals=_weibull_y(probs_std),
+        ticktext=[f"{p*100:.1f}" for p in probs_std],
+        gridcolor="#cbd5e1",
+        zeroline=False,
+    )
+    if summary.get("comment"):
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.01,
+            y=0.98,
+            showarrow=False,
+            align="left",
+            bgcolor="#fffbeb",
+            bordercolor="#fbbf24",
+            borderwidth=1,
+            text=summary["comment"],
+        )
+    return fig
+
+
 def _build_download_bundle(analysis_data, language):
     summary = analysis_data.get("summary", {})
     raw_data = analysis_data.get("raw_data", [])
@@ -327,6 +637,7 @@ def _build_download_bundle(analysis_data, language):
         f"{_t(language, 'export_bootstrap')}: {summary.get('bootstrap_samples', '')}",
         f"{_t(language, 'export_custom')}: {summary.get('custom_value', '')}",
         f"{_t(language, 'export_failure')}: {summary.get('failure_probability', '')}",
+        f"{_t(language, 'export_excluded')}: {analysis_data.get('excluded_indices', [])}",
     ]
     results_txt = "\n".join(lines)
 
@@ -337,6 +648,8 @@ def _build_download_bundle(analysis_data, language):
     json_payload = {
         "summary": summary,
         "raw_data": raw_data,
+        "source_data": analysis_data.get("source_data", raw_data),
+        "excluded_indices": analysis_data.get("excluded_indices", []),
     }
 
     buffer = BytesIO()
@@ -477,6 +790,7 @@ def _build_analysis_summary(summary, raw_data, language):
                 html.Li(_t(language, "summary_order", value=summary["order_number"] or _t(language, "na"))),
                 html.Li(_t(language, "summary_confidence", value=summary["confidence_level"])),
                 html.Li(_t(language, "summary_bootstrap", n=summary["bootstrap_samples"])),
+                html.Li(_t(language, "summary_excluded", n=summary.get("excluded_count", 0))),
             ]
         ),
         _build_analysis_warnings(summary, np.asarray(raw_data, dtype=float), language),
@@ -664,6 +978,9 @@ def create_app():
         Output("analysis-meta", "data"),
         Output("download-btn", "disabled"),
         Input("analyze", "n_clicks"),
+        Input("weibull-graph", "clickData"),
+        Input("reset-exclusions", "n_clicks"),
+        State("analysis-data", "data"),
         State("file-bytes", "data"),
         State("param-key", "value"),
         State("confidence", "value"),
@@ -672,60 +989,79 @@ def create_app():
         State("language", "value"),
         prevent_initial_call=True,
     )
-    def run_analysis(n_clicks, file_bytes, param_key, confidence, user_comment, custom_value, language):
-        if not file_bytes:
-            return None, {"state": "error", "message_key": "upload_first"}, True
-
-        file_content = base64.b64decode(file_bytes)
-        alpha = (confidence or 95) / 100
-        comment = user_comment or ""
+    def run_analysis(
+        n_clicks,
+        click_data,
+        reset_clicks,
+        current_analysis,
+        file_bytes,
+        param_key,
+        confidence,
+        user_comment,
+        custom_value,
+        language,
+    ):
         language = _get_language(language)
+        triggered = ctx.triggered_id
+
+        if triggered == "analyze":
+            if not file_bytes:
+                return None, {"state": "error", "message_key": "upload_first"}, True
+
+            file_content = base64.b64decode(file_bytes)
+            alpha = (confidence or 95) / 100
+            comment = user_comment or ""
+
+            try:
+                custom_val = _parse_custom_value(custom_value)
+                parameter_value = load_parameter(BytesIO(file_content), param_key)
+                try:
+                    order_number = load_parameter(BytesIO(file_content), "Auftrags-Nr.")
+                except ValueError:
+                    order_number = None
+                _, id_unit, df_data = load_data(BytesIO(file_content), ["sc", "Fmax"])
+                data, series_key, sym, _ = extract_data(df_data)
+                context = _analysis_context(
+                    param_key,
+                    parameter_value,
+                    order_number,
+                    series_key,
+                    id_unit,
+                    sym,
+                    alpha,
+                    custom_val,
+                    comment,
+                )
+                analysis_payload = _build_analysis_payload(data, context, [], language)
+            except Exception as exc:
+                return None, {"state": "error", "message": str(exc)}, True
+
+            return analysis_payload, {"state": "ready"}, False
+
+        if not current_analysis:
+            return no_update, no_update, no_update
 
         try:
-            custom_val = _parse_custom_value(custom_value)
-            parameter_value = load_parameter(BytesIO(file_content), param_key)
-            try:
-                order_number = load_parameter(BytesIO(file_content), "Auftrags-Nr.")
-            except ValueError:
-                order_number = None
-            _, id_unit, df_data = load_data(BytesIO(file_content), ["sc", "Fmax"])
-            data, series_key, sym, _ = extract_data(df_data)
-            shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, bootstrap_samples = (
-                calculate_weibull_parameters(data, alpha)
+            source_data = current_analysis.get("source_data", current_analysis.get("raw_data", []))
+            excluded_indices = current_analysis.get("excluded_indices", [])
+            if triggered == "weibull-graph":
+                clicked_index = _extract_clicked_index(click_data)
+                if clicked_index is None:
+                    return no_update, no_update, no_update
+                excluded_indices = _toggle_excluded_index(excluded_indices, clicked_index, len(source_data))
+            elif triggered == "reset-exclusions":
+                excluded_indices = []
+            else:
+                return no_update, no_update, no_update
+
+            analysis_payload = _build_analysis_payload(
+                source_data,
+                current_analysis.get("context", {}),
+                excluded_indices,
+                language,
             )
         except Exception as exc:
-            return None, {"state": "error", "message": str(exc)}, True
-
-        failure_prob = (
-            weibull_min.cdf(custom_val, c=unbiased_shape, scale=scale) if custom_val is not None else None
-        )
-        summary = _build_summary(
-            param_key,
-            parameter_value,
-            order_number,
-            series_key,
-            id_unit,
-            data,
-            shape,
-            scale,
-            unbiased_shape,
-            ci_shape,
-            ci_scale,
-            d_stat,
-            p_val,
-            bootstrap_samples,
-            alpha,
-            custom_val,
-            failure_prob,
-            comment,
-            language,
-        )
-        summary["data_symbol"] = sym
-
-        analysis_payload = {
-            "summary": summary,
-            "raw_data": data.tolist(),
-        }
+            return current_analysis, {"state": "error", "message": str(exc)}, False
 
         return analysis_payload, {"state": "ready"}, False
 
@@ -746,11 +1082,25 @@ def create_app():
             return None, None
 
         summary = analysis_data["summary"]
-        plot_img = html.Img(
-            src=f"data:image/png;base64,{_render_plot_base64(analysis_data, language)}",
-            style={"maxWidth": "100%"},
+        plot_panel = html.Div(
+            children=[
+                html.P(_t(language, "plot_help"), className="status"),
+                dcc.Graph(
+                    id="weibull-graph",
+                    figure=_build_interactive_figure(analysis_data, language),
+                    config={"displayModeBar": True, "responsive": True},
+                    style={"width": "100%"},
+                ),
+                html.Button(
+                    _t(language, "reset_exclusions"),
+                    id="reset-exclusions",
+                    n_clicks=0,
+                    disabled=summary.get("excluded_count", 0) == 0,
+                    className="secondary",
+                ),
+            ]
         )
-        return _build_analysis_summary(summary, analysis_data["raw_data"], language), plot_img
+        return _build_analysis_summary(summary, analysis_data["raw_data"], language), plot_panel
 
     @app.callback(
         Output("download-bundle", "data"),
