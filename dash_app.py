@@ -18,8 +18,8 @@ from WAST import (
     list_parameter_keys,
     plot_weibull,
     render_plot_to_png_bytes,
-    __version__,
 )
+from version import get_version
 
 
 PARAMETER_KEY_LABELS = {
@@ -306,7 +306,7 @@ def _build_download_bundle(analysis_data, language):
     plot_png = analysis_data.get("plot_png") or _render_plot_base64(analysis_data, language)
 
     lines = [
-        f"{_t(language, 'export_code_version')}: {summary.get('code_version', __version__)}",
+        f"{_t(language, 'export_code_version')}: {summary.get('code_version', get_version())}",
         f"{_t(language, 'export_parameter_key')}: {summary.get('parameter_key', '')}",
         f"{_t(language, 'export_parameter_label')}: {_parameter_key_label(summary.get('parameter_key'), language)}",
         f"{_t(language, 'export_parameter_value')}: {summary.get('parameter_value', '')}",
@@ -394,7 +394,7 @@ def _build_summary(
         "custom_value": None if custom_value is None else float(custom_value),
         "failure_probability": None if failure_prob is None else float(failure_prob),
         "comment": comment,
-        "code_version": __version__,
+        "code_version": get_version(),
     }
 
 
@@ -489,110 +489,113 @@ def create_app():
     app = Dash(__name__, title="Weibull-Tool", suppress_callback_exceptions=True)
     server = app.server
 
-    app.layout = html.Div(
-        className="app",
-        children=[
-            html.H1(id="app-title"),
-            html.P(id="app-intro"),
-            html.Div(
-                className="upload",
-                children=[
-                    dcc.Upload(
-                        id="upload-data",
-                        className="upload-dropzone",
-                        children=html.Div(id="upload-prompt"),
-                        multiple=False,
-                    ),
-                    html.Div(id="upload-status", className="status"),
-                ],
-            ),
-            html.Div(
-                className="controls",
-                children=[
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label(id="label-language"),
-                            dcc.RadioItems(
-                                id="language",
-                                options=[
-                                    {"label": "Deutsch", "value": "de"},
-                                    {"label": "English", "value": "en"},
-                                ],
-                                value="de",
-                                className="radio-compact language-switch",
-                                labelStyle={"display": "inline-flex", "alignItems": "center"},
-                            ),
-                        ],
-                    ),
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label(id="label-param-key"),
-                            dcc.Dropdown(
-                                id="param-key",
-                                options=_default_param_options("de"),
-                                value=_choose_parameter_value(DEFAULT_PARAM_KEYS),
-                                clearable=False,
-                                searchable=False,
-                            ),
-                        ],
-                    ),
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label(id="label-confidence"),
-                            dcc.RadioItems(
-                                id="confidence",
-                                options=[{"label": f"{p}%", "value": p} for p in (90, 95, 99)],
-                                value=95,
-                                className="radio-compact",
-                                labelStyle={"display": "inline-flex", "flexDirection": "column", "alignItems": "center"},
-                            ),
-                        ],
-                    ),
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label(id="label-custom-value"),
-                            dcc.Input(id="custom-value", type="number", min=0.000001, step="any"),
-                        ],
-                    ),
-                    html.Div(
-                        className="control",
-                        children=[
-                            html.Label(id="label-comment"),
-                            dcc.Input(id="user-comment", placeholder="Optional", type="text", style={"width": "100%"}),
-                        ],
-                    ),
-                    html.Button(id="analyze", n_clicks=0, className="primary"),
-                ],
-            ),
-            dcc.Loading(
-                type="default",
-                color="#38bdf8",
-                children=[
-                    html.Div(id="analysis-summary", className="summary"),
-                    html.Div(id="plot-container", className="plot"),
-                ],
-            ),
-            html.Div(
-                className="download",
-                children=[
-                    html.Button(id="download-btn", n_clicks=0, disabled=True),
-                    html.P(id="download-help", className="status"),
-                    html.Div(id="download-status", className="status"),
-                    dcc.Download(id="download-bundle"),
-                ],
-            ),
-            dcc.Store(id="file-bytes"),
-            dcc.Store(id="upload-meta", data={"state": "empty"}),
-            dcc.Store(id="parameter-keys", data=DEFAULT_PARAM_KEYS),
-            dcc.Store(id="analysis-data"),
-            dcc.Store(id="analysis-meta", data={"state": "idle"}),
-            html.Div(f"Version {__version__}", className="version-footer"),
-        ],
-    )
+    def serve_layout():
+        return html.Div(
+            className="app",
+            children=[
+                html.H1(id="app-title"),
+                html.P(id="app-intro"),
+                html.Div(
+                    className="upload",
+                    children=[
+                        dcc.Upload(
+                            id="upload-data",
+                            className="upload-dropzone",
+                            children=html.Div(id="upload-prompt"),
+                            multiple=False,
+                        ),
+                        html.Div(id="upload-status", className="status"),
+                    ],
+                ),
+                html.Div(
+                    className="controls",
+                    children=[
+                        html.Div(
+                            className="control",
+                            children=[
+                                html.Label(id="label-language"),
+                                dcc.RadioItems(
+                                    id="language",
+                                    options=[
+                                        {"label": "Deutsch", "value": "de"},
+                                        {"label": "English", "value": "en"},
+                                    ],
+                                    value="de",
+                                    className="radio-compact language-switch",
+                                    labelStyle={"display": "inline-flex", "alignItems": "center"},
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            className="control",
+                            children=[
+                                html.Label(id="label-param-key"),
+                                dcc.Dropdown(
+                                    id="param-key",
+                                    options=_default_param_options("de"),
+                                    value=_choose_parameter_value(DEFAULT_PARAM_KEYS),
+                                    clearable=False,
+                                    searchable=False,
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            className="control",
+                            children=[
+                                html.Label(id="label-confidence"),
+                                dcc.RadioItems(
+                                    id="confidence",
+                                    options=[{"label": f"{p}%", "value": p} for p in (90, 95, 99)],
+                                    value=95,
+                                    className="radio-compact",
+                                    labelStyle={"display": "inline-flex", "flexDirection": "column", "alignItems": "center"},
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            className="control",
+                            children=[
+                                html.Label(id="label-custom-value"),
+                                dcc.Input(id="custom-value", type="number", min=0.000001, step="any"),
+                            ],
+                        ),
+                        html.Div(
+                            className="control",
+                            children=[
+                                html.Label(id="label-comment"),
+                                dcc.Input(id="user-comment", placeholder="Optional", type="text", style={"width": "100%"}),
+                            ],
+                        ),
+                        html.Button(id="analyze", n_clicks=0, className="primary"),
+                    ],
+                ),
+                dcc.Loading(
+                    type="default",
+                    color="#38bdf8",
+                    children=[
+                        html.Div(id="analysis-summary", className="summary"),
+                        html.Div(id="plot-container", className="plot"),
+                    ],
+                ),
+                html.Div(
+                    className="download",
+                    children=[
+                        html.Button(id="download-btn", n_clicks=0, disabled=True),
+                        html.P(id="download-help", className="status"),
+                        html.Div(id="download-status", className="status"),
+                        dcc.Download(id="download-bundle"),
+                    ],
+                ),
+                dcc.Store(id="file-bytes"),
+                dcc.Store(id="upload-meta", data={"state": "empty"}),
+                dcc.Store(id="parameter-keys", data=DEFAULT_PARAM_KEYS),
+                dcc.Store(id="analysis-data"),
+                dcc.Store(id="analysis-meta", data={"state": "idle"}),
+                html.Div(f"Version {get_version()}", className="version-footer"),
+            ],
+        )
+
+    app.layout = serve_layout
 
     @app.callback(
         Output("upload-meta", "data"),
@@ -781,7 +784,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.version:
-        print(f"Weibull-Tool Version: {__version__}")
+        print(f"Weibull-Tool Version: {get_version()}")
     else:
         debug = os.getenv("DASH_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
         port = int(os.getenv("PORT", "8053"))

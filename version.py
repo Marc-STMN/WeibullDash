@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 
-_FALLBACK_VERSION = "4.1.0"
+_FALLBACK_VERSION = "0+unknown"
 _TAG_PATTERN = re.compile(
     r"^(?:v)?(?P<base>\d+\.\d+\.\d+)(?:-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+))?(?P<dirty>-dirty)?$"
 )
@@ -80,7 +80,11 @@ def _resolve_version() -> str:
     return _FALLBACK_VERSION
 
 
+def get_version() -> str:
+    return _resolve_version()
+
+
 __version__ = _resolve_version()
 
 
-__all__ = ["__version__", "_normalize_git_describe"]
+__all__ = ["__version__", "_normalize_git_describe", "get_version"]

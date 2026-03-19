@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm, weibull_min
 from numpy.typing import ArrayLike
-from version import __version__
+from version import __version__, get_version
 
 # Random generator for reproducibility
 np.random.seed(42)
@@ -298,16 +298,21 @@ def plot_weibull(
     ax.set_ylabel(text["ylabel"])
     ax.grid(True, which="both", linestyle="--", linewidth=0.5, color="#cbd5e1", alpha=0.8)
 
-    finite_bounds = np.concatenate([np.asarray(lower_ci, dtype=float), np.asarray(upper_ci, dtype=float)])
-    finite_bounds = finite_bounds[np.isfinite(finite_bounds) & (finite_bounds > 0)]
-    if finite_bounds.size:
-        x_min, x_max = np.min(finite_bounds), np.max(finite_bounds)
-        interval = 100 if x_max > 700 else 50
-        ticks = np.arange(np.floor(x_min / interval) * interval, np.ceil(x_max / interval) * interval + interval, interval)
-        ticks = ticks[np.isfinite(ticks) & (ticks > 0)]
+    axis_candidates = [np.asarray(sorted_data, dtype=float)]
+    if custom_value is not None:
+        axis_candidates.append(np.asarray([custom_value], dtype=float))
+    finite_axis = np.concatenate(axis_candidates)
+    finite_axis = finite_axis[np.isfinite(finite_axis) & (finite_axis > 0)]
+    if finite_axis.size:
+        x_min = float(np.min(finite_axis))
+        x_max = float(np.max(finite_axis))
+        display_min, display_max = _expand_axis_bounds(x_min, x_max)
+        ax.set_xlim(np.log(display_min), np.log(display_max))
+
+        ticks = _build_axis_ticks(display_min, display_max)
         if ticks.size:
             ax.set_xticks(np.log(ticks))
-            ax.set_xticklabels([f"{int(t)}" for t in ticks], fontsize=8)
+            ax.set_xticklabels([_format_tick_label(tick) for tick in ticks], fontsize=8)
 
     probs_std = np.array([0.01, 0.05, 0.10, 0.20, 0.40, 0.6325, 0.80, 0.95, 0.99])
     yticks = np.log(-np.log(1 - probs_std))
@@ -329,7 +334,7 @@ def plot_weibull(
     fig.text(
         0.01,
         0.055,
-        text["footer_left"].format(version=__version__, date=current_date),
+        text["footer_left"].format(version=get_version(), date=current_date),
         ha="left",
         va="center",
         fontsize=7,
@@ -350,6 +355,84 @@ def render_plot_to_png_bytes(fig):
         plt.close(fig)
 
 
+def _expand_axis_bounds(x_min, x_max):
+    x_min = float(x_min)
+    x_max = float(x_max)
+    if not np.isfinite(x_min) or not np.isfinite(x_max) or x_min <= 0 or x_max <= 0:
+        return x_min, x_max
+    if x_min > x_max:
+        x_min, x_max = x_max, x_min
+    if np.isclose(x_min, x_max):
+        return x_min * 0.9, x_max * 1.1
+
+    log_min = np.log(x_min)
+    log_max = np.log(x_max)
+    padding = max((log_max - log_min) * 0.06, 0.08)
+    return float(np.exp(log_min - padding)), float(np.exp(log_max + padding))
+
+
+def _build_axis_ticks(x_min, x_max, max_ticks=7):
+    x_min = float(x_min)
+    x_max = float(x_max)
+    if not np.isfinite(x_min) or not np.isfinite(x_max) or x_min <= 0 or x_max <= 0:
+        return np.array([])
+    if x_min > x_max:
+        x_min, x_max = x_max, x_min
+    if np.isclose(x_min, x_max):
+        return np.array([x_min])
+
+    axis_range = x_max - x_min
+    step = _nice_number(axis_range / max(max_ticks - 1, 1), round_result=True)
+    if step <= 0:
+        return np.array([x_min, x_max])
+
+    tick_start = np.floor(x_min / step) * step
+    if tick_start <= 0:
+        tick_start = step
+    tick_end = np.ceil(x_max / step) * step
+    tick_values = np.arange(tick_start, tick_end + step * 0.5, step)
+    tick_values = tick_values[np.isfinite(tick_values) & (tick_values > 0)]
+
+    if tick_values.size < 2:
+        return np.array([x_min, x_max])
+    return tick_values
+
+
+def _nice_number(value, round_result):
+    if not np.isfinite(value) or value <= 0:
+        return 0.0
+
+    exponent = np.floor(np.log10(value))
+    fraction = value / (10 ** exponent)
+    if round_result:
+        if fraction < 1.5:
+            nice_fraction = 1.0
+        elif fraction < 3.0:
+            nice_fraction = 2.0
+        elif fraction < 7.0:
+            nice_fraction = 5.0
+        else:
+            nice_fraction = 10.0
+    else:
+        if fraction <= 1.0:
+            nice_fraction = 1.0
+        elif fraction <= 2.0:
+            nice_fraction = 2.0
+        elif fraction <= 5.0:
+            nice_fraction = 5.0
+        else:
+            nice_fraction = 10.0
+    return float(nice_fraction * (10 ** exponent))
+
+
+def _format_tick_label(value):
+    if value >= 100:
+        return f"{value:.0f}"
+    if value >= 10:
+        return f"{value:.1f}".rstrip("0").rstrip(".")
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 __all__ = [
     "load_data",
     "extract_data",
@@ -359,4 +442,5 @@ __all__ = [
     "plot_weibull",
     "render_plot_to_png_bytes",
     "__version__",
+    "_build_axis_ticks",
 ]

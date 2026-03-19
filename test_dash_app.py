@@ -4,6 +4,7 @@ import zipfile
 
 import pytest
 
+import dash_app
 from dash_app import _build_download_bundle, _parse_custom_value
 from version import _normalize_git_describe
 
@@ -71,3 +72,10 @@ def test_normalize_git_describe_formats_version_strings():
     assert _normalize_git_describe("4.1.0-3-gabc1234-dirty") == "4.1.0+3.gabc1234.dirty"
     assert _normalize_git_describe("abc1234") == "0+gabc1234"
     assert _normalize_git_describe("abc1234-dirty") == "0+gabc1234.dirty"
+
+
+def test_layout_uses_current_version(monkeypatch):
+    monkeypatch.setattr(dash_app, "get_version", lambda: "9.9.9")
+    app, _ = dash_app.create_app()
+    layout = app.layout()
+    assert layout.children[-1].children == "Version 9.9.9"

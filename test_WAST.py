@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import weibull_min
 
 from WAST import (
+    _build_axis_ticks,
     calculate_weibull_parameters,
     extract_data,
     list_parameter_keys,
@@ -131,3 +132,16 @@ def test_plot_and_render(sample_excel):
 def test_load_parameter_missing(sample_excel):
     with pytest.raises(ValueError):
         load_parameter(sample_excel, "NichtVorhanden")
+
+
+def test_build_axis_ticks_adapts_for_small_ranges():
+    ticks = _build_axis_ticks(2.3, 18.0)
+    assert len(ticks) >= 2
+    assert ticks[0] > 0
+    assert ticks[0] <= 2.3
+    assert ticks[-1] >= 18.0
+
+
+def test_build_axis_ticks_uses_hundreds_within_thousands_range():
+    ticks = _build_axis_ticks(1100.0, 1800.0)
+    assert np.array_equal(ticks, np.arange(1100.0, 1800.0 + 100.0, 100.0))
