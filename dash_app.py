@@ -554,15 +554,15 @@ def create_app():
                     html.Div(
                         className="control",
                         children=[
-                            html.Label(id="label-comment"),
-                            dcc.Input(id="user-comment", placeholder="Optional", type="text", style={"width": "100%"}),
+                            html.Label(id="label-custom-value"),
+                            dcc.Input(id="custom-value", type="number", min=0.000001, step="any"),
                         ],
                     ),
                     html.Div(
                         className="control",
                         children=[
-                            html.Label(id="label-custom-value"),
-                            dcc.Input(id="custom-value", type="number", min=0.000001, step="any"),
+                            html.Label(id="label-comment"),
+                            dcc.Input(id="user-comment", placeholder="Optional", type="text", style={"width": "100%"}),
                         ],
                     ),
                     html.Button(id="analyze", n_clicks=0, className="primary"),

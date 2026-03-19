@@ -5,6 +5,7 @@ import zipfile
 import pytest
 
 from dash_app import _build_download_bundle, _parse_custom_value
+from version import _normalize_git_describe
 
 
 def test_parse_custom_value_accepts_none_and_positive_numbers():
@@ -62,3 +63,11 @@ def test_build_download_bundle_contains_png_txt_json_and_csv():
         assert zf.read("ZY_plot.png") == png_bytes
         assert b"index,value" in zf.read("ZY_raw_data.csv")
         assert b"Parameter label: Material" in zf.read("ZY_results.txt")
+
+
+def test_normalize_git_describe_formats_version_strings():
+    assert _normalize_git_describe("v4.1.0\n") == "4.1.0"
+    assert _normalize_git_describe("4.1.0-3-gabc1234") == "4.1.0+3.gabc1234"
+    assert _normalize_git_describe("4.1.0-3-gabc1234-dirty") == "4.1.0+3.gabc1234.dirty"
+    assert _normalize_git_describe("abc1234") == "0+gabc1234"
+    assert _normalize_git_describe("abc1234-dirty") == "0+gabc1234.dirty"
