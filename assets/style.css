@@ -1,6 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 
 :root {
+  --font-ui: "Aptos", "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   --bg: #f4f6fb;
   --bg-strong: #e8edf7;
   --panel: rgba(255, 255, 255, 0.88);
@@ -32,7 +33,7 @@ body {
 body {
   margin: 0;
   color: var(--text);
-  font-family: "Sora", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
   background:
     radial-gradient(circle at top left, rgba(20, 184, 166, 0.16), transparent 24%),
     radial-gradient(circle at 88% 12%, rgba(245, 158, 11, 0.12), transparent 18%),
@@ -48,10 +49,10 @@ body {
 .app h1 {
   margin: 0 0 10px;
   color: var(--heading);
-  font-family: "Fraunces", Georgia, serif;
+  font-family: var(--font-ui);
   font-size: clamp(2rem, 3.8vw, 3rem);
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   line-height: 1.04;
 }
 
@@ -130,8 +131,9 @@ body {
 }
 
 .controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 18px;
 }
 
@@ -139,6 +141,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 220px;
+  min-width: 220px;
+  justify-content: flex-end;
 }
 
 .control label {
@@ -148,6 +153,8 @@ body {
   font-weight: 600;
   letter-spacing: 0.01em;
   text-transform: uppercase;
+  min-height: 2.3rem;
+  align-content: end;
 }
 
 .control input,
@@ -205,6 +212,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-height: 48px;
+  align-items: center;
 }
 
 .radio-compact label {
@@ -222,6 +231,11 @@ body {
   text-transform: none;
   font-size: 0.95rem;
   letter-spacing: 0;
+}
+
+.language-switch label {
+  min-width: 0;
+  padding-inline: 14px;
 }
 
 .radio-compact input {
@@ -281,8 +295,9 @@ button:disabled {
 .summary h3 {
   margin: 0 0 10px;
   color: var(--heading);
-  font-family: "Fraunces", Georgia, serif;
+  font-family: var(--font-ui);
   font-size: 1.45rem;
+  font-weight: 800;
 }
 
 .summary ul {
@@ -369,12 +384,19 @@ button:disabled {
   font-size: 0.88rem;
 }
 
+.controls > .primary {
+  flex: 0 0 auto;
+  min-width: 220px;
+  align-self: flex-end;
+}
+
 @media (max-width: 640px) {
   .app {
     padding: 0 14px 20px;
   }
 
   .controls {
+    display: grid;
     grid-template-columns: 1fr;
   }
 

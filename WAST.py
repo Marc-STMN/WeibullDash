@@ -58,15 +58,15 @@ def extract_data(df_data):
     df_data.columns = df_data.iloc[0]
     df_data = df_data.drop(0).reset_index(drop=True)
     column_mapping = {
-        "sc": ("I_sigma0", "flexural strength in MPa"),
-        "Fmax": ("F_0", "fracture load in N"),
+        "sc": ("I_sigma0", "Biegefestigkeit in MPa"),
+        "Fmax": ("F_0", "Bruchlast in N"),
     }
     for column_name, (symbol, title) in column_mapping.items():
         if column_name in df_data.columns:
             values = pd.to_numeric(df_data[column_name], errors="coerce").dropna().values
             return values, column_name, symbol, title
 
-    raise ValueError("Error: Neither 'Fmax' nor 'sc' found in the DataFrame.")
+    raise ValueError("Weder 'Fmax' noch 'sc' wurde in der Tabelle gefunden.")
 
 
 def load_parameter(file_object, search_key, target_col=None):
@@ -188,26 +188,58 @@ def plot_weibull(
     alpha,
     ci_shape,
     ci_scale,
+    language="de",
 ):
     """Generate Weibull plot with Wald confidence intervals."""
     sorted_data = np.sort(data)
     empirical_probs = (np.arange(1, len(data) + 1) - 0.5) / len(data)
     p = np.linspace(0.01, 0.99, len(lower_ci))
     weibull_quantiles = weibull_min.ppf(p, c=unbiased_shape, scale=scale)
+    plot_color = "#0f766e"
+    fit_color = "#d97706"
+    ci_color = "#94a3b8"
+    accent_color = "#0284c7"
+    text = {
+        "de": {
+            "fit": "Fit: m = {m:.1f}, Kennwert = {scale:.0f} {unit}",
+            "band": "{confidence} %-Konfidenzband",
+            "custom": "P(Ausfall) bei {value:.0f} {unit} = {prob:.2f} %",
+            "title": "Weibull-Diagramm mit {confidence} %-Konfidenzband",
+            "ylabel": "Ausfallwahrscheinlichkeit (%)",
+            "footer_right": "AD = {ad:.3f} | p = {p_value:.3f}",
+            "footer_left": "Version {version} | Erstellt am {date}",
+        },
+        "en": {
+            "fit": "Fit: m = {m:.1f}, characteristic value = {scale:.0f} {unit}",
+            "band": "{confidence}% confidence band",
+            "custom": "P(failure) at {value:.0f} {unit} = {prob:.2f} %",
+            "title": "Weibull plot with {confidence}% confidence band",
+            "ylabel": "Failure probability (%)",
+            "footer_right": "AD = {ad:.3f} | p = {p_value:.3f}",
+            "footer_left": "Version {version} | Created on {date}",
+        },
+    }.get(language if language in {"de", "en"} else "de")
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(
         np.log(sorted_data),
         np.log(-np.log(1 - empirical_probs)),
-        "x",
-        label=f"{data_label}, n={len(data)}",
+        linestyle="None",
+        marker="x",
+        markersize=5.5,
+        markeredgewidth=1.2,
+        color=plot_color,
+        label=f"{data_label} | n = {len(data)}",
     )
 
-    label_text = (
-        f"unbiased Weibull modulus m = {unbiased_shape:.1f}\n"
-        f"characteristic value = {scale:.0f} {id_unit}"
+    fit_label = text["fit"].format(m=unbiased_shape, scale=scale, unit=id_unit)
+    ax.plot(
+        np.log(weibull_quantiles),
+        np.log(-np.log(1 - p)),
+        color=fit_color,
+        linewidth=1.8,
+        label=fit_label,
     )
-    ax.plot(np.log(weibull_quantiles), np.log(-np.log(1 - p)), "r-", label=label_text)
 
     q_lo = weibull_min.ppf(p, c=ci_shape[0], scale=ci_scale[0])
     q_lo_hi = weibull_min.ppf(p, c=ci_shape[1], scale=ci_scale[0])
@@ -230,38 +262,41 @@ def plot_weibull(
         x_vals,
         lower_log,
         upper_log,
-        color="grey",
-        alpha=0.2,
+        color=ci_color,
+        alpha=0.22,
+        label=text["band"].format(confidence=int(alpha * 100)),
     )
 
     if custom_value is not None and failure_prob is not None:
         ax.axvline(
             np.log(custom_value),
-            color="blue",
+            color=accent_color,
             linestyle="--",
-            linewidth=0.5,
-            label=f"Failure prob at {custom_value:.0f} {id_unit} = {failure_prob*100:.2f}%",
+            linewidth=0.9,
+            label=text["custom"].format(value=custom_value, unit=id_unit, prob=failure_prob * 100),
         )
         y_fp = np.log(-np.log(1 - failure_prob))
-        ax.axhline(y=y_fp, color="blue", linestyle="--", linewidth=0.5)
+        ax.axhline(y=y_fp, color=accent_color, linestyle="--", linewidth=0.9)
 
     if user_comment:
         ax.text(
             0.02,
-            0.75,
+            0.72,
             user_comment,
             transform=ax.transAxes,
             fontsize=8,
-            bbox=dict(boxstyle="round", facecolor="white", edgecolor="lightgrey", alpha=0.8),
+            color="#0f172a",
+            bbox=dict(boxstyle="round,pad=0.35", facecolor="#fffbeb", edgecolor="#fbbf24", alpha=0.95),
         )
 
     ax.set_title(
-        f"Weibull Plot with {int(alpha*100)}% Confidence Interval (ISO 20501)",
-        fontsize=10,
+        text["title"].format(confidence=int(alpha * 100)),
+        fontsize=11,
+        pad=12,
     )
     ax.set_xlabel(axis_title)
-    ax.set_ylabel("Failure Probability (%)")
-    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax.set_ylabel(text["ylabel"])
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5, color="#cbd5e1", alpha=0.8)
 
     finite_bounds = np.concatenate([np.asarray(lower_ci, dtype=float), np.asarray(upper_ci, dtype=float)])
     finite_bounds = finite_bounds[np.isfinite(finite_bounds) & (finite_bounds > 0)]
@@ -279,29 +314,26 @@ def plot_weibull(
     ax.set_yticks(yticks)
     ax.set_yticklabels([f"{p*100:.1f}" for p in probs_std], fontsize=8)
 
-    ax.legend(loc="upper left", fontsize=8)
+    ax.legend(loc="upper left", fontsize=8, frameon=True, facecolor="white", edgecolor="#cbd5e1")
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ax.text(
-        1.02,
-        1.00,
-        f"Code version: {__version__} / Plot generated on: {current_date}",
-        transform=ax.transAxes,
-        verticalalignment="top",
-        horizontalalignment="right",
-        rotation=90,
-        color="grey",
-        fontsize=6,
+    fig.subplots_adjust(bottom=0.18)
+    fig.text(
+        0.99,
+        0.055,
+        text["footer_right"].format(ad=d_statistic, p_value=p_value),
+        ha="right",
+        va="center",
+        fontsize=7,
+        color="#475569",
     )
-    ax.text(
-        0.97,
-        0.03,
-        f"AD-stat: {d_statistic:.3f} / p-value: {p_value:.3f}",
-        transform=ax.transAxes,
-        verticalalignment="bottom",
-        horizontalalignment="right",
-        fontsize=6,
-        color="grey",
-        bbox=dict(facecolor="white", edgecolor="white", alpha=1.0),
+    fig.text(
+        0.01,
+        0.055,
+        text["footer_left"].format(version=__version__, date=current_date),
+        ha="left",
+        va="center",
+        fontsize=7,
+        color="#64748b",
     )
 
     return fig

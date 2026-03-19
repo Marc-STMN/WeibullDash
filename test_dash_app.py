@@ -27,7 +27,6 @@ def test_build_download_bundle_contains_png_txt_json_and_csv():
     analysis_data = {
         "summary": {
             "parameter_key": "Werkstoff",
-            "parameter_key_label": "Material (Werkstoff)",
             "parameter_value": "ZY",
             "order_number": "TTG-CMaC-0039",
             "measurement_series": "sc",
@@ -52,7 +51,7 @@ def test_build_download_bundle_contains_png_txt_json_and_csv():
         "plot_png": base64.b64encode(png_bytes).decode(),
     }
 
-    bundle = _build_download_bundle(analysis_data)
+    bundle = _build_download_bundle(analysis_data, "en")
 
     with zipfile.ZipFile(BytesIO(bundle), "r") as zf:
         names = set(zf.namelist())
@@ -62,3 +61,4 @@ def test_build_download_bundle_contains_png_txt_json_and_csv():
         assert "ZY_raw_data.csv" in names
         assert zf.read("ZY_plot.png") == png_bytes
         assert b"index,value" in zf.read("ZY_raw_data.csv")
+        assert b"Parameter label: Material" in zf.read("ZY_results.txt")
