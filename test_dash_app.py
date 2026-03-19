@@ -3,6 +3,7 @@ from io import BytesIO
 from pathlib import Path
 import zipfile
 
+import numpy as np
 import pytest
 
 import dash_app
@@ -11,6 +12,8 @@ from dash_app import (
     _build_analysis_payload,
     _build_download_bundle,
     _build_interactive_figure,
+    _bootstrap_samples_for_payload,
+    _extract_clicked_index,
     _parse_custom_value,
     _toggle_excluded_index,
 )
@@ -118,6 +121,7 @@ def test_build_analysis_payload_tracks_exclusions():
     assert payload["summary"]["excluded_count"] == 1
     assert payload["summary"]["n"] == 3
     assert payload["raw_data"] == [480.0, 520.0, 540.0]
+    assert payload["summary"]["bootstrap_samples"] == 180
 
 
 def test_build_interactive_figure_contains_excluded_trace():
@@ -155,3 +159,16 @@ def test_build_interactive_figure_contains_excluded_trace():
 
     assert len(fig.data) >= 4
     assert any(trace.name.startswith("Excluded points") for trace in fig.data)
+    assert fig.layout.margin.t == 120
+
+
+def test_extract_clicked_index_falls_back_to_nearest_x():
+    analysis_data = {"source_data": [100.0, 200.0, 400.0], "raw_data": [100.0, 200.0, 400.0]}
+    click_data = {"points": [{"x": np.log(210.0)}]}
+
+    assert _extract_clicked_index(click_data, analysis_data) == 1
+
+
+def test_bootstrap_samples_reduce_for_interactive_exclusions():
+    assert _bootstrap_samples_for_payload([]) == 320
+    assert _bootstrap_samples_for_payload([1]) == 180

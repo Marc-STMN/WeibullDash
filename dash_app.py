@@ -338,6 +338,10 @@ def _analysis_context(
     }
 
 
+def _bootstrap_samples_for_payload(excluded_indices):
+    return 180 if excluded_indices else 320
+
+
 def _build_analysis_payload(source_data, context, excluded_indices, language):
     source_array = np.asarray(source_data, dtype=float)
     excluded_sorted = sorted(
@@ -354,8 +358,11 @@ def _build_analysis_payload(source_data, context, excluded_indices, language):
     if active_data.size < 2:
         raise ValueError("Need at least 2 data points for Weibull analysis")
 
+    bootstrap_samples_requested = _bootstrap_samples_for_payload(excluded_sorted)
     shape, scale, unbiased_shape, ci_shape, ci_scale, d_stat, p_val, bootstrap_samples = calculate_weibull_parameters(
-        active_data, context["alpha"]
+        active_data,
+        context["alpha"],
+        n_boot=bootstrap_samples_requested,
     )
     custom_value = context.get("custom_value")
     failure_prob = weibull_min.cdf(custom_value, c=unbiased_shape, scale=scale) if custom_value is not None else None
@@ -406,12 +413,26 @@ def _toggle_excluded_index(excluded_indices, clicked_index, source_length):
     return sorted(excluded)
 
 
-def _extract_clicked_index(click_data):
+def _extract_clicked_index(click_data, analysis_data=None):
     if not click_data or not click_data.get("points"):
         return None
-    customdata = click_data["points"][0].get("customdata")
+    point = click_data["points"][0]
+    customdata = point.get("customdata")
     if customdata is None:
-        return None
+        click_x = point.get("x")
+        source_data = None if analysis_data is None else analysis_data.get("source_data", analysis_data.get("raw_data"))
+        if click_x is None or source_data is None:
+            return None
+        source_array = np.asarray(source_data, dtype=float)
+        source_array = source_array[np.isfinite(source_array) & (source_array > 0)]
+        if source_array.size == 0:
+            return None
+        source_logs = np.log(np.asarray(source_data, dtype=float))
+        if not np.isfinite(source_logs).any():
+            return None
+        valid_indices = np.where(np.isfinite(source_logs))[0]
+        nearest = valid_indices[np.argmin(np.abs(source_logs[valid_indices] - float(click_x)))]
+        return int(nearest)
     if isinstance(customdata, (list, tuple)):
         customdata = customdata[0] if customdata else None
     return None if customdata is None else int(customdata)
@@ -516,7 +537,7 @@ def _build_interactive_figure(analysis_data, language):
             x=np.log(active_sorted),
             y=_weibull_y(empirical_probs),
             mode="markers",
-            marker=dict(color=palette["data"], symbol="x", size=9, line=dict(width=1.5, color=palette["data"])),
+            marker=dict(color=palette["data"], symbol="circle", size=11, line=dict(width=1.5, color="#ffffff")),
             name=text["included"].format(n=len(active_sorted)),
             customdata=np.array(active_sorted_indices)[:, None],
             text=[f"{value:.3f}" for value in active_sorted],
@@ -532,8 +553,8 @@ def _build_interactive_figure(analysis_data, language):
                 marker=dict(
                     color=palette["excluded"],
                     symbol="circle-open",
-                    size=9,
-                    line=dict(width=1.5, color=palette["excluded"]),
+                    size=11,
+                    line=dict(width=2, color=palette["excluded"]),
                 ),
                 name=text["excluded"].format(n=int(excluded_mask_sorted.sum())),
                 customdata=np.array(order_source[excluded_mask_sorted])[:, None],
@@ -566,11 +587,18 @@ def _build_interactive_figure(analysis_data, language):
     probs_std = np.array([0.01, 0.05, 0.10, 0.20, 0.40, 0.6325, 0.80, 0.95, 0.99])
 
     fig.update_layout(
-        title=text["title"].format(confidence=int(alpha * 100)),
+        title=dict(
+            text=text["title"].format(confidence=int(alpha * 100)),
+            x=0.5,
+            xanchor="center",
+            y=0.98,
+            yanchor="top",
+            pad=dict(t=8, b=0),
+        ),
         template="plotly_white",
         height=560,
-        margin=dict(l=70, r=30, t=70, b=70),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=70, r=30, t=120, b=70),
+        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="left", x=0),
         clickmode="event",
         hovermode="closest",
     )
@@ -604,6 +632,29 @@ def _build_interactive_figure(analysis_data, language):
             borderwidth=1,
             text=summary["comment"],
         )
+    return fig
+
+
+def _build_placeholder_figure(language, message=""):
+    fig = go.Figure()
+    fig.update_layout(
+        template="plotly_white",
+        height=560,
+        margin=dict(l=70, r=30, t=40, b=50),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        annotations=[
+            dict(
+                text=message or _t(language, "run_first"),
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                font=dict(size=16, color="#4f5d75"),
+            )
+        ],
+    )
     return fig
 
 
@@ -888,7 +939,26 @@ def create_app():
                     color="#38bdf8",
                     children=[
                         html.Div(id="analysis-summary", className="summary"),
-                        html.Div(id="plot-container", className="plot"),
+                        html.Div(
+                            id="plot-container",
+                            className="plot",
+                            children=[
+                                html.P(id="plot-help", className="status"),
+                                dcc.Graph(
+                                    id="weibull-graph",
+                                    figure=_build_placeholder_figure("de", ""),
+                                    config={"displayModeBar": True, "responsive": True},
+                                    style={"width": "100%"},
+                                ),
+                                html.Button(
+                                    id="reset-exclusions",
+                                    n_clicks=0,
+                                    disabled=True,
+                                    className="secondary",
+                                    style={"display": "none"},
+                                ),
+                            ],
+                        ),
                     ],
                 ),
                 html.Div(
@@ -1045,7 +1115,7 @@ def create_app():
             source_data = current_analysis.get("source_data", current_analysis.get("raw_data", []))
             excluded_indices = current_analysis.get("excluded_indices", [])
             if triggered == "weibull-graph":
-                clicked_index = _extract_clicked_index(click_data)
+                clicked_index = _extract_clicked_index(click_data, current_analysis)
                 if clicked_index is None:
                     return no_update, no_update, no_update
                 excluded_indices = _toggle_excluded_index(excluded_indices, clicked_index, len(source_data))
@@ -1067,7 +1137,12 @@ def create_app():
 
     @app.callback(
         Output("analysis-summary", "children"),
-        Output("plot-container", "children"),
+        Output("plot-help", "children"),
+        Output("weibull-graph", "figure"),
+        Output("weibull-graph", "style"),
+        Output("reset-exclusions", "children"),
+        Output("reset-exclusions", "disabled"),
+        Output("reset-exclusions", "style"),
         Input("analysis-data", "data"),
         Input("analysis-meta", "data"),
         Input("language", "value"),
@@ -1077,30 +1152,28 @@ def create_app():
         meta = analysis_meta or {"state": "idle"}
         if meta.get("state") == "error":
             message = _t(language, meta["message_key"]) if meta.get("message_key") else meta.get("message", "")
-            return _t(language, "error_prefix", message=message), None
+            return (
+                _t(language, "error_prefix", message=message),
+                "",
+                _build_placeholder_figure(language, _t(language, "error_prefix", message=message)),
+                {"width": "100%"},
+                _t(language, "reset_exclusions"),
+                True,
+                {"display": "none"},
+            )
         if not analysis_data:
-            return None, None
+            return None, "", _build_placeholder_figure(language, ""), {"width": "100%"}, _t(language, "reset_exclusions"), True, {"display": "none"}
 
         summary = analysis_data["summary"]
-        plot_panel = html.Div(
-            children=[
-                html.P(_t(language, "plot_help"), className="status"),
-                dcc.Graph(
-                    id="weibull-graph",
-                    figure=_build_interactive_figure(analysis_data, language),
-                    config={"displayModeBar": True, "responsive": True},
-                    style={"width": "100%"},
-                ),
-                html.Button(
-                    _t(language, "reset_exclusions"),
-                    id="reset-exclusions",
-                    n_clicks=0,
-                    disabled=summary.get("excluded_count", 0) == 0,
-                    className="secondary",
-                ),
-            ]
+        return (
+            _build_analysis_summary(summary, analysis_data["raw_data"], language),
+            _t(language, "plot_help"),
+            _build_interactive_figure(analysis_data, language),
+            {"width": "100%"},
+            _t(language, "reset_exclusions"),
+            summary.get("excluded_count", 0) == 0,
+            {"display": "inline-block"},
         )
-        return _build_analysis_summary(summary, analysis_data["raw_data"], language), plot_panel
 
     @app.callback(
         Output("download-bundle", "data"),

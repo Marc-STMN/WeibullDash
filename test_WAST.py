@@ -58,7 +58,7 @@ def test_calculate_weibull_parameters(sample_data):
     assert ci_scale[0] < ci_scale[1]
     assert 0 <= d_stat <= 2
     assert 0 <= p_val <= 1
-    assert n_boot == 500
+    assert n_boot == 400
 
 
 def test_calculate_weibull_parameters_invalid_data():
@@ -66,6 +66,8 @@ def test_calculate_weibull_parameters_invalid_data():
         calculate_weibull_parameters([], 0.95)
     with pytest.raises(ValueError):
         calculate_weibull_parameters([0, -1, 2], 0.95)
+    with pytest.raises(ValueError):
+        calculate_weibull_parameters([1, 2, 3], 0.95, n_boot=10)
 
 
 def test_extract_and_load(sample_excel):

@@ -113,7 +113,7 @@ def list_parameter_keys(file_object):
     return keys
 
 
-def calculate_weibull_parameters(data, alpha):
+def calculate_weibull_parameters(data, alpha, n_boot=400):
     """Perform Weibull MLE estimation and Wald confidence intervals."""
     if len(data) < 2:
         raise ValueError("Need at least 2 data points for Weibull analysis")
@@ -157,7 +157,9 @@ def calculate_weibull_parameters(data, alpha):
 
     ad_obs = ad_statistic(data, shape_mle, scale_mle)
 
-    n_boot = 500
+    n_boot = int(n_boot)
+    if n_boot < 50:
+        raise ValueError("Need at least 50 bootstrap samples for Weibull analysis")
     rng = np.random.default_rng(seed=42)
     boot_stats = np.empty(n_boot)
     for j in range(n_boot):
