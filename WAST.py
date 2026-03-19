@@ -298,7 +298,12 @@ def plot_weibull(
     ax.set_ylabel(text["ylabel"])
     ax.grid(True, which="both", linestyle="--", linewidth=0.5, color="#cbd5e1", alpha=0.8)
 
-    axis_candidates = [np.asarray(sorted_data, dtype=float)]
+    axis_candidates = [
+        np.asarray(sorted_data, dtype=float),
+        np.asarray(lower_ci_curve, dtype=float),
+        np.asarray(upper_ci_curve, dtype=float),
+        np.asarray(weibull_quantiles, dtype=float),
+    ]
     if custom_value is not None:
         axis_candidates.append(np.asarray([custom_value], dtype=float))
     finite_axis = np.concatenate(axis_candidates)
@@ -371,7 +376,7 @@ def _expand_axis_bounds(x_min, x_max):
     return float(np.exp(log_min - padding)), float(np.exp(log_max + padding))
 
 
-def _build_axis_ticks(x_min, x_max, max_ticks=7):
+def _build_axis_ticks(x_min, x_max, max_ticks=9):
     x_min = float(x_min)
     x_max = float(x_max)
     if not np.isfinite(x_min) or not np.isfinite(x_max) or x_min <= 0 or x_max <= 0:
@@ -407,9 +412,11 @@ def _nice_number(value, round_result):
     if round_result:
         if fraction < 1.5:
             nice_fraction = 1.0
-        elif fraction < 3.0:
+        elif fraction < 2.25:
             nice_fraction = 2.0
-        elif fraction < 7.0:
+        elif fraction < 3.5:
+            nice_fraction = 2.5
+        elif fraction < 7.5:
             nice_fraction = 5.0
         else:
             nice_fraction = 10.0
@@ -418,6 +425,8 @@ def _nice_number(value, round_result):
             nice_fraction = 1.0
         elif fraction <= 2.0:
             nice_fraction = 2.0
+        elif fraction <= 2.5:
+            nice_fraction = 2.5
         elif fraction <= 5.0:
             nice_fraction = 5.0
         else:

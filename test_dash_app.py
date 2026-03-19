@@ -1,11 +1,13 @@
 import base64
 from io import BytesIO
+from pathlib import Path
 import zipfile
 
 import pytest
 
 import dash_app
 from dash_app import _build_download_bundle, _parse_custom_value
+import version
 from version import _normalize_git_describe
 
 
@@ -79,3 +81,17 @@ def test_layout_uses_current_version(monkeypatch):
     app, _ = dash_app.create_app()
     layout = app.layout()
     assert layout.children[-1].children == "Version 9.9.9"
+
+
+def test_resolve_version_uses_version_file_when_git_unavailable(monkeypatch):
+    version_file = Path.cwd() / "VERSION.test"
+    version_file.write_text("4.2.0\n", encoding="utf-8")
+    try:
+        monkeypatch.setattr(version, "_VERSION_FILE", version_file)
+        monkeypatch.setattr(version, "_version_from_git", lambda: None)
+        monkeypatch.delenv("WEIBULL_TOOL_VERSION", raising=False)
+
+        assert version.get_version() == "4.2.0"
+    finally:
+        if version_file.exists():
+            version_file.unlink()

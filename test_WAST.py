@@ -7,6 +7,7 @@ from scipy.stats import weibull_min
 
 from WAST import (
     _build_axis_ticks,
+    _expand_axis_bounds,
     calculate_weibull_parameters,
     extract_data,
     list_parameter_keys,
@@ -145,3 +146,9 @@ def test_build_axis_ticks_adapts_for_small_ranges():
 def test_build_axis_ticks_uses_hundreds_within_thousands_range():
     ticks = _build_axis_ticks(1100.0, 1800.0)
     assert np.array_equal(ticks, np.arange(1100.0, 1800.0 + 100.0, 100.0))
+
+
+def test_expand_axis_bounds_keeps_ci_range_visible():
+    lower, upper = _expand_axis_bounds(80.0, 2200.0)
+    assert lower < 80.0
+    assert upper > 2200.0

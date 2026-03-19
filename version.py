@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 _FALLBACK_VERSION = "0+unknown"
+_VERSION_FILE = Path(__file__).resolve().with_name("VERSION")
 _TAG_PATTERN = re.compile(
     r"^(?:v)?(?P<base>\d+\.\d+\.\d+)(?:-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+))?(?P<dirty>-dirty)?$"
 )
@@ -68,6 +69,30 @@ def _version_from_git() -> str | None:
     return _normalize_git_describe(result.stdout)
 
 
+def _persist_version(version: str) -> None:
+    persisted = (version or "").strip()
+    if not persisted:
+        return
+    if persisted.endswith(".dirty"):
+        persisted = persisted[:-6]
+    try:
+        current = _VERSION_FILE.read_text(encoding="utf-8").strip() if _VERSION_FILE.exists() else ""
+        if current != persisted:
+            _VERSION_FILE.write_text(f"{persisted}\n", encoding="utf-8")
+    except OSError:
+        return
+
+
+def _version_from_file() -> str | None:
+    try:
+        if not _VERSION_FILE.exists():
+            return None
+        value = _VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
+
+
 def _resolve_version() -> str:
     env_version = os.getenv("WEIBULL_TOOL_VERSION", "").strip()
     if env_version:
@@ -75,7 +100,12 @@ def _resolve_version() -> str:
 
     git_version = _version_from_git()
     if git_version:
+        _persist_version(git_version)
         return git_version
+
+    file_version = _version_from_file()
+    if file_version:
+        return file_version
 
     return _FALLBACK_VERSION
 
